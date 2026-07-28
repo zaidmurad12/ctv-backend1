@@ -1,0 +1,857 @@
+# Backend API
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the REST API exposed by the CTV Platform.
+
+The Backend API is the single communication layer between all clients and the Core.
+
+Clients include
+
+• Android TV
+• Admin Dashboard
+• Future Mobile App
+• Future Web App
+
+No client may communicate directly with Providers or the Database.
+
+---
+
+# API Principles
+
+• REST Architecture
+• JSON Responses
+• UTF-8 Encoding
+• Stateless
+• Versioned APIs
+• JWT Authentication
+• Pagination Support
+• Consistent Error Format
+
+---
+
+# Base URL
+
+/api/v1
+
+---
+
+# Authentication
+
+Authorization
+
+Bearer Token (JWT)
+
+Public Endpoints
+
+Health
+
+Authentication
+
+Application Configuration
+
+Everything else requires authentication.
+
+---
+
+# Response Format
+
+Every successful response must follow:
+
+{
+  "success": true,
+  "data": {},
+  "meta": {}
+}
+
+Every failed response must follow:
+
+{
+  "success": false,
+  "error": {
+      "code": "",
+      "message": "",
+      "details": {}
+  }
+}
+
+---
+
+# HTTP Status Codes
+
+200 OK
+
+201 Created
+
+204 No Content
+
+400 Bad Request
+
+401 Unauthorized
+
+403 Forbidden
+
+404 Not Found
+
+409 Conflict
+
+422 Validation Error
+
+429 Too Many Requests
+
+500 Internal Server Error
+
+---
+
+# Pagination
+
+Query Parameters
+
+page
+
+limit
+
+sort
+
+order
+
+search
+
+Response
+
+page
+
+limit
+
+total
+
+totalPages
+
+hasNext
+
+hasPrevious
+
+---
+
+# Authentication API
+
+POST
+
+/auth/login
+
+POST
+
+/auth/refresh
+
+POST
+
+/auth/logout
+
+GET
+
+/auth/profile
+
+---
+
+# Movies API
+
+GET
+
+/movies
+
+Movie List
+
+Supports
+
+Search
+
+Genres
+
+Year
+
+Language
+
+Sort
+
+Pagination
+
+---
+
+GET
+
+/movies/{id}
+
+Movie Details
+
+Returns
+
+Movie
+
+Streams
+
+Subtitles
+
+Genres
+
+Cast
+
+Crew
+
+Recommendations
+
+Collection
+
+---
+
+GET
+
+/movies/latest
+
+---
+
+GET
+
+/movies/popular
+
+---
+
+GET
+
+/movies/trending
+
+---
+
+GET
+
+/movies/recommended
+
+---
+
+GET
+
+/movies/{id}/streams
+
+---
+
+GET
+
+/movies/{id}/subtitles
+
+---
+
+GET
+
+/movies/{id}/similar
+
+---
+
+# TV Shows API
+
+GET
+
+/shows
+
+---
+
+GET
+
+/shows/{id}
+
+---
+
+GET
+
+/shows/latest
+
+---
+
+GET
+
+/shows/popular
+
+---
+
+GET
+
+/shows/trending
+
+---
+
+GET
+
+/shows/{id}/seasons
+
+---
+
+GET
+
+/shows/{id}/episodes
+
+---
+
+GET
+
+/shows/{id}/recommendations
+
+---
+
+# Seasons API
+
+GET
+
+/seasons/{id}
+
+---
+
+GET
+
+/seasons/{id}/episodes
+
+---
+
+# Episodes API
+
+GET
+
+/episodes/{id}
+
+---
+
+GET
+
+/episodes/{id}/streams
+
+---
+
+GET
+
+/episodes/{id}/subtitles
+
+---
+
+# Search API
+
+GET
+
+/search
+
+Supports
+
+Movie Search
+
+TV Search
+
+Arabic
+
+English
+
+Mixed
+
+Autocomplete
+
+---
+
+GET
+
+/search/suggestions
+
+---
+
+GET
+
+/search/trending
+
+---
+
+# Genres API
+
+GET
+
+/genres
+
+---
+
+GET
+
+/genres/{id}
+
+---
+
+GET
+
+/genres/{id}/movies
+
+---
+
+GET
+
+/genres/{id}/shows
+
+---
+
+# Collections API
+
+GET
+
+/collections
+
+---
+
+GET
+
+/collections/{id}
+
+---
+
+GET
+
+/collections/{id}/movies
+
+---
+
+# People API
+
+GET
+
+/people
+
+---
+
+GET
+
+/people/{id}
+
+---
+
+GET
+
+/people/{id}/movies
+
+---
+
+GET
+
+/people/{id}/shows
+
+---
+
+# Streams API
+
+GET
+
+/streams/{id}
+
+---
+
+POST
+
+/streams/validate
+
+Admin Only
+
+---
+
+# Subtitles API
+
+GET
+
+/subtitles/{id}
+
+---
+
+GET
+
+/subtitles/languages
+
+---
+
+# Favorites API
+
+GET
+
+/favorites
+
+---
+
+POST
+
+/favorites
+
+---
+
+DELETE
+
+/favorites/{id}
+
+---
+
+# Watch History API
+
+GET
+
+/history
+
+---
+
+POST
+
+/history
+
+---
+
+DELETE
+
+/history
+
+---
+
+# Continue Watching API
+
+GET
+
+/continue
+
+---
+
+POST
+
+/continue
+
+---
+
+# Recommendation API
+
+GET
+
+/recommendations
+
+---
+
+GET
+
+/recommendations/home
+
+---
+
+# Synchronization API
+
+Admin Only
+
+POST
+
+/sync/start
+
+---
+
+POST
+
+/sync/movie/{id}
+
+---
+
+POST
+
+/sync/show/{id}
+
+---
+
+POST
+
+/sync/metadata
+
+---
+
+GET
+
+/sync/status
+
+---
+
+GET
+
+/sync/jobs
+
+---
+
+# Provider API
+
+Admin Only
+
+GET
+
+/providers
+
+---
+
+GET
+
+/providers/health
+
+---
+
+POST
+
+/providers/reload
+
+---
+
+# Dashboard API
+
+Admin Only
+
+GET
+
+/dashboard/statistics
+
+---
+
+GET
+
+/dashboard/import
+
+---
+
+GET
+
+/dashboard/providers
+
+---
+
+GET
+
+/dashboard/storage
+
+---
+
+GET
+
+/dashboard/system
+
+---
+
+# Settings API
+
+GET
+
+/settings
+
+---
+
+PUT
+
+/settings
+
+---
+
+# Health API
+
+GET
+
+/health
+
+Returns
+
+Status
+
+Version
+
+Database
+
+Redis
+
+Providers
+
+Storage
+
+Uptime
+
+---
+
+# Metrics API
+
+GET
+
+/metrics
+
+Prometheus Format
+
+---
+
+# Request Validation
+
+Every endpoint validates
+
+Headers
+
+JWT
+
+Parameters
+
+Query
+
+Body
+
+DTO
+
+---
+
+# Rate Limiting
+
+Authentication
+
+10 requests/minute
+
+Search
+
+60 requests/minute
+
+Movies
+
+120 requests/minute
+
+Synchronization
+
+Admin Only
+
+---
+
+# Caching
+
+Movie Details
+
+5 Minutes
+
+Home
+
+5 Minutes
+
+Genres
+
+24 Hours
+
+Configuration
+
+24 Hours
+
+---
+
+# Sorting
+
+Supported
+
+Newest
+
+Oldest
+
+Popularity
+
+Rating
+
+Release Date
+
+Alphabetical
+
+Runtime
+
+---
+
+# Filtering
+
+Supported
+
+Genre
+
+Language
+
+Country
+
+Year
+
+Quality
+
+Provider
+
+Collection
+
+Runtime
+
+Age Rating
+
+---
+
+# Versioning
+
+All APIs must remain backward compatible.
+
+Breaking changes require
+
+/api/v2
+
+---
+
+# Security
+
+JWT
+
+HTTPS
+
+Rate Limiting
+
+Validation
+
+CORS
+
+Helmet
+
+No Sensitive Headers
+
+---
+
+# Logging
+
+Every request logs
+
+Correlation ID
+
+User
+
+IP
+
+Duration
+
+Endpoint
+
+Status
+
+Response Size
+
+---
+
+# Acceptance Criteria
+
+Backend API is considered complete when
+
+✓ Android TV consumes all required endpoints.
+
+✓ Admin Dashboard requires no direct database access.
+
+✓ Every endpoint validates input.
+
+✓ Authentication is centralized.
+
+✓ API versioning is implemented.
+
+✓ Errors follow the standard response format.
+
+✓ Pagination is consistent.
+
+✓ Rate limiting is enforced.
+
+✓ Swagger documentation is automatically generated.
+
+✓ API responses remain backward compatible.

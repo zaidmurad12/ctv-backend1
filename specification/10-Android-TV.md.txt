@@ -1,0 +1,699 @@
+# Android TV Application
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the complete Android TV application.
+
+It specifies navigation, UI behavior, playback experience, caching,
+performance, and interaction using the TV remote.
+
+The Android TV application is the primary client of the CTV Platform.
+
+---
+
+# Design Goals
+
+Simple
+
+Fast
+
+Modern
+
+Minimal
+
+Smooth
+
+TV First
+
+Remote Friendly
+
+Large Screen Optimized
+
+---
+
+# Platform
+
+Android TV
+
+Minimum Version
+
+Android 9
+
+Target
+
+Latest Android TV
+
+---
+
+# Technology
+
+Language
+
+Kotlin
+
+UI
+
+Jetpack Compose
+
+Dependency Injection
+
+Hilt
+
+Networking
+
+Retrofit
+
+Image Loading
+
+Coil
+
+Video Player
+
+Media3 ExoPlayer
+
+Navigation
+
+Navigation Compose
+
+State
+
+ViewModel
+
+Flow
+
+---
+
+# Startup Flow
+
+Splash Screen
+
+↓
+
+Configuration
+
+↓
+
+Authentication
+
+↓
+
+Home
+
+---
+
+# Application Structure
+
+Application
+
+↓
+
+Navigation
+
+↓
+
+Screens
+
+↓
+
+Components
+
+↓
+
+Player
+
+↓
+
+Settings
+
+---
+
+# Navigation
+
+Home
+
+Movies
+
+TV Shows
+
+Search
+
+Favorites
+
+Continue Watching
+
+Settings
+
+Player
+
+Movie Details
+
+TV Details
+
+Episode Details
+
+---
+
+# Home Screen
+
+Sections
+
+Continue Watching
+
+Trending Movies
+
+Latest Movies
+
+Popular Movies
+
+Trending TV Shows
+
+Latest TV Shows
+
+Collections
+
+Recommended
+
+Recently Added
+
+---
+
+Each section scrolls horizontally.
+
+The page scrolls vertically.
+
+---
+
+# Movies Screen
+
+Supports
+
+Latest
+
+Trending
+
+Popular
+
+Top Rated
+
+Genre Filter
+
+Year Filter
+
+Search
+
+Sorting
+
+---
+
+# TV Shows Screen
+
+Supports
+
+Latest
+
+Trending
+
+Popular
+
+Genre Filter
+
+Year Filter
+
+Sorting
+
+---
+
+# Search Screen
+
+Supports
+
+Arabic
+
+English
+
+Mixed Search
+
+Voice Search (Future)
+
+Suggestions
+
+Recent Searches
+
+Trending Searches
+
+---
+
+# Movie Details Screen
+
+Displays
+
+Poster
+
+Backdrop
+
+Logo
+
+Title
+
+Original Title
+
+Overview
+
+Genres
+
+Runtime
+
+Release Date
+
+Rating
+
+Cast
+
+Crew
+
+Collection
+
+Recommendations
+
+Streams
+
+Subtitles
+
+Play Button
+
+Favorite Button
+
+Share (Future)
+
+---
+
+# TV Show Details
+
+Displays
+
+Poster
+
+Backdrop
+
+Overview
+
+Genres
+
+Rating
+
+Season List
+
+Episode List
+
+Cast
+
+Recommendations
+
+---
+
+# Episode Screen
+
+Displays
+
+Episode Number
+
+Title
+
+Overview
+
+Runtime
+
+Streams
+
+Subtitles
+
+Play Button
+
+---
+
+# Video Player
+
+Supports
+
+Pause
+
+Resume
+
+Seek
+
+Forward
+
+Backward
+
+Subtitle Selection
+
+Audio Selection
+
+Quality Selection
+
+Next Episode
+
+Previous Episode
+
+Playback Speed
+
+Buffer Indicator
+
+Error Recovery
+
+---
+
+# Continue Watching
+
+Automatically stores
+
+Movie
+
+Episode
+
+Playback Position
+
+Last Watched
+
+Duration
+
+---
+
+Resume playback from last position.
+
+---
+
+# Favorites
+
+Users may
+
+Add Movie
+
+Remove Movie
+
+Add Show
+
+Remove Show
+
+Favorites synchronize through Backend.
+
+---
+
+# Collections
+
+Display movie collections.
+
+Example
+
+Harry Potter
+
+John Wick
+
+Marvel
+
+---
+
+# Recommendations
+
+Display
+
+Related Movies
+
+Related Shows
+
+Because You Watched
+
+Trending
+
+---
+
+# Images
+
+Poster
+
+Backdrop
+
+Logo
+
+Episode Still
+
+Actor Photo
+
+Company Logo
+
+---
+
+# Caching
+
+Home Screen
+
+5 Minutes
+
+Movie Details
+
+5 Minutes
+
+Images
+
+30 Days
+
+Configuration
+
+24 Hours
+
+---
+
+# Offline Mode
+
+Shows
+
+Cached Home
+
+Cached Posters
+
+Cached Details
+
+Playback requires network.
+
+---
+
+# Loading States
+
+Skeleton Loading
+
+Progress Indicators
+
+Image Placeholder
+
+Retry Button
+
+---
+
+# Error States
+
+Network Error
+
+Server Error
+
+Movie Unavailable
+
+Playback Error
+
+Subtitle Error
+
+Stream Error
+
+---
+
+# Remote Control
+
+Directional Navigation
+
+Up
+
+Down
+
+Left
+
+Right
+
+OK
+
+Back
+
+Menu
+
+Play
+
+Pause
+
+Fast Forward
+
+Rewind
+
+---
+
+# Focus Rules
+
+Visible Focus
+
+Smooth Animation
+
+Predictable Navigation
+
+No Dead Ends
+
+---
+
+# Animations
+
+Fast
+
+Lightweight
+
+60 FPS
+
+Fade
+
+Scale
+
+Slide
+
+---
+
+# Theme
+
+Dark Theme
+
+Primary Color
+
+Brand Color
+
+Large Typography
+
+High Contrast
+
+---
+
+# Accessibility
+
+Large Text
+
+RTL Support
+
+Screen Reader Ready
+
+Keyboard Support
+
+---
+
+# Performance Targets
+
+Application Launch
+
+<2 Seconds
+
+Home Loading
+
+<2 Seconds
+
+Movie Details
+
+<500ms
+
+Image Display
+
+<300ms
+
+Player Startup
+
+<2 Seconds
+
+---
+
+# Security
+
+No Direct Database Access
+
+No Provider Access
+
+JWT Authentication
+
+HTTPS Only
+
+Encrypted Local Storage
+
+---
+
+# Logging
+
+Application Start
+
+Navigation
+
+Playback
+
+Errors
+
+Crash Reports
+
+Performance
+
+---
+
+# Analytics
+
+Future
+
+Screen Views
+
+Playback Time
+
+Popular Content
+
+Search Trends
+
+---
+
+# Updates
+
+Application checks Backend configuration.
+
+Supports forced update.
+
+Supports optional update.
+
+---
+
+# Acceptance Criteria
+
+Android TV application is complete when
+
+✓ Home loads successfully.
+
+✓ Movies browse correctly.
+
+✓ TV Shows browse correctly.
+
+✓ Search works in Arabic and English.
+
+✓ Movie Details display correctly.
+
+✓ TV Show Details display correctly.
+
+✓ Player supports subtitles.
+
+✓ Continue Watching functions correctly.
+
+✓ Favorites synchronize correctly.
+
+✓ Remote navigation is smooth.
+
+✓ Application maintains 60 FPS during navigation.
+
+✓ All communication occurs through Backend API only.

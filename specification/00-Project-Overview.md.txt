@@ -1,0 +1,351 @@
+# CTV Platform
+## Engineering Specification
+### Version 1.0
+
+---
+
+# Executive Summary
+
+CTV Platform is an enterprise-grade streaming ecosystem designed specifically for Android TV.
+
+The platform automatically discovers, imports, enriches, organizes, and publishes Movies and TV Shows from supported providers.
+
+Unlike traditional media servers, CTV Platform is designed around an automated import pipeline capable of maintaining a complete streaming library with minimal manual intervention.
+
+The platform is modular by design, provider-independent, horizontally scalable, and production-ready.
+
+---
+
+# Mission
+
+Build the most advanced Android TV streaming platform that automatically synchronizes content from external providers while maintaining a clean, scalable, and provider-agnostic architecture.
+
+---
+
+# Vision
+
+The long-term vision is to create a streaming platform capable of supporting multiple providers, AI-powered recommendations, multilingual metadata, automatic synchronization, and a modern Android TV experience without depending on any single content source.
+
+---
+
+# Product Goals
+
+The platform must:
+
+• Automatically import Movies.
+• Automatically import TV Shows.
+• Automatically detect available streaming servers.
+• Automatically detect subtitles.
+• Automatically enrich metadata.
+• Automatically synchronize new releases.
+• Provide a premium Android TV experience.
+• Scale to hundreds of thousands of titles.
+
+---
+
+# Supported Clients
+
+Current
+
+• Android TV
+
+Future
+
+• Android Mobile
+• Web
+• Apple TV
+• Samsung Tizen
+• LG webOS
+
+---
+
+# Primary Content Provider
+
+Current Provider
+
+Cinemana
+
+Important Rule
+
+Cinemana is the PRIMARY SOURCE OF CONTENT.
+
+No movie or TV Show may enter the database unless it exists on Cinemana.
+
+---
+
+# Metadata Provider
+
+Current
+
+TMDB
+
+TMDB is NOT a content provider.
+
+TMDB exists only to enrich already imported content.
+
+---
+
+# Future Providers
+
+The architecture must support adding new providers without modifying the Core system.
+
+Possible providers include:
+
+• Jellyfin
+• Plex
+• Stremio
+• Internal Provider
+• Custom APIs
+
+---
+
+# Core Principles
+
+## Provider Independence
+
+Business logic must never depend on Cinemana.
+
+The Core communicates only with Provider Interfaces.
+
+---
+
+## Modular Architecture
+
+Each module has one responsibility.
+
+No module may access another module's internals directly.
+
+Communication happens through defined interfaces.
+
+---
+
+## Clean Architecture
+
+Presentation Layer
+
+↓
+
+Application Layer
+
+↓
+
+Domain Layer
+
+↓
+
+Infrastructure Layer
+
+---
+
+## SOLID
+
+Every module must follow SOLID principles.
+
+---
+
+## Dependency Injection
+
+All services must be injectable.
+
+No hardcoded implementations.
+
+---
+
+## Strong Typing
+
+TypeScript strict mode is mandatory.
+
+No implicit any.
+
+---
+
+## Scalability
+
+The system must be capable of supporting:
+
+• 500,000+ Movies
+• 100,000+ TV Episodes
+• Millions of API requests
+
+---
+
+# High-Level Architecture
+
+                Android TV
+                     │
+                     ▼
+              Backend API
+                     │
+                     ▼
+                 Core Engine
+                     │
+      ┌──────────────┼──────────────┐
+      ▼              ▼              ▼
+ Catalog         Metadata        Streams
+      │              │              │
+      └──────────────┼──────────────┘
+                     ▼
+            Provider Interface
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+      Cinemana               Future Providers
+
+---
+
+# Import Pipeline
+
+Provider
+
+↓
+
+Catalog Discovery
+
+↓
+
+Movie Details
+
+↓
+
+Stream Discovery
+
+↓
+
+Subtitle Discovery
+
+↓
+
+TMDB Matching
+
+↓
+
+Metadata Enrichment
+
+↓
+
+Validation
+
+↓
+
+Database
+
+↓
+
+Search Index
+
+↓
+
+Android TV
+
+---
+
+# Main Components
+
+Apps
+
+• Backend
+• Android TV
+• Admin Dashboard
+
+Core
+
+• Catalog
+• Metadata
+• Streams
+• Subtitles
+• Search
+• Recommendation
+• Sync
+
+Providers
+
+• Cinemana
+• TMDB
+• Future Providers
+
+Packages
+
+• Database
+• Config
+• SDK
+• Types
+• Common
+• Logger
+
+Tools
+
+• Inspector
+• Endpoint Discovery
+• Migration
+
+---
+
+# Long-Term Features
+
+Phase 1
+
+• Movies
+• TV Shows
+• Search
+• Subtitles
+• Streams
+
+Phase 2
+
+• Recommendations
+• Continue Watching
+• Favorites
+• Watch History
+
+Phase 3
+
+• AI Recommendations
+• Voice Search
+• Offline Sync
+• Live TV
+
+---
+
+# Success Metrics
+
+The platform is considered successful when:
+
+✓ Every Cinemana movie can be imported.
+
+✓ TMDB match accuracy exceeds 99%.
+
+✓ Daily synchronization requires zero manual intervention.
+
+✓ Android TV loads Home screen in under 2 seconds.
+
+✓ New providers can be added without modifying Core.
+
+✓ Every module remains independently testable.
+
+---
+
+# Non-Goals
+
+The platform will NOT:
+
+• Host video files.
+• Encode videos.
+• Depend on TMDB as a content source.
+• Mix provider logic with business logic.
+• Require manual content management.
+
+---
+
+# Engineering Philosophy
+
+The platform is designed as a long-term enterprise product.
+
+Every architectural decision must prioritize:
+
+• Maintainability
+• Scalability
+• Extensibility
+• Testability
+• Performance
+
+Short-term shortcuts are never preferred over long-term architecture.

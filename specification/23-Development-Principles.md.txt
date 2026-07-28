@@ -1,0 +1,192 @@
+# Development Principles
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the engineering philosophy that will guide all future development work on the CTV Platform.
+
+These principles are mandatory. They apply to every contributor, every AI assistant, and every implementation decision.
+
+---
+
+# Core Philosophy
+
+The platform must be built as a production-grade, long-term software product.
+
+Every decision must favor:
+
+- Maintainability
+- Correctness
+- Scalability
+- Security
+- Testability
+- Performance
+
+Short-term convenience must never outweigh long-term architecture quality.
+
+---
+
+# Fundamental Principles
+
+## 1. Follow the Specification
+
+The specification is the single source of truth.
+
+No implementation work should begin with assumptions, informal design choices, or shortcuts that contradict the specification.
+
+---
+
+## 2. Preserve Clean Architecture
+
+Development must preserve the architectural boundaries between:
+
+- Presentation
+- Application
+- Domain
+- Infrastructure
+
+Business logic must remain in the core domain. Providers must remain adapters. Controllers must not contain business logic.
+
+---
+
+## 3. Preserve Provider Independence
+
+The core must never depend on provider-specific implementation details.
+
+All external integrations must flow through the provider abstraction layer.
+
+---
+
+## 4. Prefer Production-Ready Quality
+
+All code must be suitable for real deployment.
+
+That means:
+
+- complete implementations
+- proper validation
+- logging
+- error handling
+- tests
+- documentation
+
+No demo code, placeholder logic, or incomplete features are acceptable.
+
+---
+
+## 5. Prefer Long-Term Maintainability
+
+The codebase must remain understandable and maintainable over time.
+
+This requires:
+
+- clear naming
+- small, focused functions
+- modular structure
+- explicit contracts
+- minimal duplication
+- consistent conventions
+
+---
+
+## 6. Build in Phases
+
+Development must follow the approved roadmap in order.
+
+The project must not skip foundational work or move prematurely into UI or client development before the backend and core layers are ready.
+
+---
+
+# Engineering Rules
+
+## Architecture Rules
+
+- Follow Clean Architecture strictly.
+- Maintain dependency direction from applications to core to interfaces to infrastructure.
+- Avoid circular dependencies.
+- Keep providers isolated from the core domain.
+- Never place business logic in controllers or providers.
+
+## Coding Rules
+
+- Use TypeScript strict mode.
+- Never use implicit any.
+- Never suppress compiler errors.
+- Use explicit return types for public methods.
+- Avoid null where possible and prefer explicit optional handling.
+- Do not use console statements in production code.
+- Do not leave TODOs, FIXME comments, or placeholder code.
+
+## Database Rules
+
+- Use Prisma and PostgreSQL.
+- Access the database through repositories.
+- Use transactions where required.
+- Do not introduce raw SQL unless there is explicit approval.
+
+## Provider Rules
+
+- Providers must be stateless and independently testable.
+- Providers must not access the database directly.
+- Providers must not implement business logic.
+- Providers must not call other providers.
+
+## API Rules
+
+- Validate all requests.
+- Use DTOs.
+- Return standardized response structures.
+- Version public APIs.
+- Never expose internal errors.
+
+## Security Rules
+
+- Never hardcode secrets.
+- Use environment-based configuration.
+- Enforce authentication and authorization.
+- Validate input and permissions consistently.
+- Never log passwords, tokens, or cookies.
+
+## Testing Rules
+
+- Every feature must be testable.
+- Every bug fix must include regression coverage.
+- Unit, integration, API, provider, and security tests must be part of the delivery standard.
+
+## Documentation Rules
+
+- Every module and public API must be documented.
+- Architecture changes require documentation updates.
+- The specification remains the authoritative source for architecture decisions.
+
+---
+
+# Quality Gates
+
+A feature is not complete unless it satisfies all of the following:
+
+- It compiles successfully.
+- It passes the required tests.
+- It follows the architecture rules.
+- It is documented.
+- It has logging and error handling.
+- It meets the performance and security expectations defined by the specification.
+
+---
+
+# Definition of Done
+
+A deliverable is complete only when it is:
+
+- implemented correctly
+- tested
+- documented
+- validated
+- secure
+- production-ready
+
+These principles are the standard by which all future development should be judged.

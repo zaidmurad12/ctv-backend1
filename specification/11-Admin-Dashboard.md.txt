@@ -1,0 +1,685 @@
+# Admin Dashboard
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the Administration Dashboard for the CTV Platform.
+
+The dashboard is responsible for monitoring, managing, importing,
+synchronizing, and maintaining the platform.
+
+The dashboard communicates exclusively through the Backend API.
+
+---
+
+# Design Goals
+
+Simple
+
+Fast
+
+Responsive
+
+Modern
+
+Data Focused
+
+Administrator Friendly
+
+---
+
+# Technology
+
+Framework
+
+Next.js
+
+Language
+
+TypeScript
+
+UI
+
+Material UI
+
+Charts
+
+Recharts
+
+Authentication
+
+JWT
+
+---
+
+# Dashboard Sections
+
+Dashboard
+
+Movies
+
+TV Shows
+
+Collections
+
+People
+
+Import Jobs
+
+Synchronization
+
+Providers
+
+Logs
+
+Users
+
+Roles
+
+Settings
+
+Storage
+
+System
+
+---
+
+# Dashboard Home
+
+Displays
+
+Total Movies
+
+Total TV Shows
+
+Total Episodes
+
+Total Streams
+
+Total Subtitles
+
+Total Users
+
+Provider Status
+
+Storage Usage
+
+Recent Imports
+
+Recent Errors
+
+Current Synchronization
+
+---
+
+# Movies
+
+Functions
+
+Browse Movies
+
+Search
+
+Filter
+
+Sort
+
+Edit Metadata
+
+Refresh Metadata
+
+Refresh Streams
+
+Refresh Subtitles
+
+Delete
+
+Restore
+
+View Logs
+
+---
+
+# TV Shows
+
+Functions
+
+Browse Shows
+
+Search
+
+Filter
+
+Refresh
+
+Delete
+
+Restore
+
+View Seasons
+
+View Episodes
+
+---
+
+# Movie Details
+
+Displays
+
+General Information
+
+Streams
+
+Subtitles
+
+Images
+
+Cast
+
+Crew
+
+Collection
+
+Provider Information
+
+Synchronization History
+
+Logs
+
+---
+
+# TV Details
+
+Displays
+
+General Information
+
+Seasons
+
+Episodes
+
+Streams
+
+Subtitles
+
+Provider Information
+
+Logs
+
+---
+
+# Import Jobs
+
+Displays
+
+Job ID
+
+Provider
+
+Started
+
+Finished
+
+Duration
+
+Status
+
+Progress
+
+Errors
+
+Retries
+
+---
+
+Functions
+
+Retry
+
+Cancel
+
+Restart
+
+View Logs
+
+Export Logs
+
+---
+
+# Synchronization
+
+Functions
+
+Start Full Sync
+
+Start Incremental Sync
+
+Refresh Metadata
+
+Refresh Artwork
+
+Refresh Streams
+
+Refresh Subtitles
+
+Validate Library
+
+---
+
+Displays
+
+Current Job
+
+Progress
+
+Queue Size
+
+Estimated Time
+
+Completed
+
+Failed
+
+---
+
+# Providers
+
+Displays
+
+Provider Name
+
+Version
+
+Priority
+
+Status
+
+Latency
+
+Last Check
+
+Health
+
+---
+
+Functions
+
+Enable
+
+Disable
+
+Reload
+
+Health Check
+
+View Logs
+
+---
+
+# Logs
+
+Displays
+
+System Logs
+
+Import Logs
+
+Provider Logs
+
+API Logs
+
+Authentication Logs
+
+Error Logs
+
+---
+
+Supports
+
+Filtering
+
+Searching
+
+Export
+
+Pagination
+
+---
+
+# Users
+
+Displays
+
+Users
+
+Roles
+
+Status
+
+Created Date
+
+Last Login
+
+---
+
+Functions
+
+Create User
+
+Edit User
+
+Disable User
+
+Delete User
+
+Reset Password
+
+Assign Role
+
+---
+
+# Roles
+
+Administrator
+
+Editor
+
+Viewer
+
+---
+
+Permissions
+
+Read
+
+Write
+
+Delete
+
+Import
+
+Synchronization
+
+System Settings
+
+Users
+
+Providers
+
+---
+
+# Settings
+
+General
+
+Application Name
+
+Application Version
+
+Default Language
+
+Default Theme
+
+---
+
+Provider Settings
+
+Enable Providers
+
+Provider Priority
+
+Retry Policy
+
+Timeout
+
+---
+
+Import Settings
+
+Maximum Concurrent Jobs
+
+Maximum Retries
+
+Synchronization Schedule
+
+Metadata Refresh Interval
+
+---
+
+Player Settings
+
+Default Subtitle
+
+Default Quality
+
+Default Audio
+
+Resume Playback
+
+---
+
+Search Settings
+
+Minimum Characters
+
+Maximum Results
+
+Cache Duration
+
+Trending Count
+
+---
+
+# Storage
+
+Displays
+
+Database Size
+
+Poster Storage
+
+Backdrop Storage
+
+Subtitle Storage
+
+Cache Size
+
+Logs Size
+
+Free Space
+
+---
+
+Functions
+
+Clear Cache
+
+Optimize Database
+
+Delete Temporary Files
+
+Cleanup Logs
+
+Cleanup Images
+
+---
+
+# System
+
+Displays
+
+CPU Usage
+
+Memory Usage
+
+Database Status
+
+Redis Status
+
+Disk Usage
+
+Application Uptime
+
+Backend Version
+
+Environment
+
+---
+
+Functions
+
+Restart Services
+
+Clear Cache
+
+Health Check
+
+Export Diagnostics
+
+---
+
+# Search
+
+Global Search
+
+Supports
+
+Movies
+
+TV Shows
+
+Episodes
+
+Users
+
+Import Jobs
+
+Logs
+
+Providers
+
+---
+
+# Notifications
+
+Success
+
+Warning
+
+Error
+
+Information
+
+---
+
+Real-time Updates
+
+Synchronization Progress
+
+Import Progress
+
+Provider Status
+
+System Alerts
+
+---
+
+# Charts
+
+Movies Imported
+
+Shows Imported
+
+Import Speed
+
+Provider Availability
+
+API Requests
+
+Storage Growth
+
+Daily Activity
+
+---
+
+# Security
+
+JWT Authentication
+
+Role-Based Access Control
+
+HTTPS Only
+
+Session Timeout
+
+Audit Logging
+
+CSRF Protection
+
+---
+
+# Audit Trail
+
+Every administrative action stores
+
+User
+
+Action
+
+Timestamp
+
+IP Address
+
+Target
+
+Result
+
+---
+
+# Performance Targets
+
+Dashboard Load
+
+<2 Seconds
+
+Search
+
+<300ms
+
+Statistics
+
+<500ms
+
+Provider Health
+
+<1 Second
+
+---
+
+# Acceptance Criteria
+
+The Admin Dashboard is considered complete when
+
+✓ Administrators can manage movies and TV shows.
+
+✓ Import jobs can be monitored and controlled.
+
+✓ Synchronization can be started manually.
+
+✓ Provider health is displayed.
+
+✓ Logs are searchable and exportable.
+
+✓ Users and roles are manageable.
+
+✓ Settings are configurable.
+
+✓ Storage usage is visible.
+
+✓ System health is monitored.
+
+✓ All operations are performed through the Backend API.

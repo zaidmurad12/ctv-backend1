@@ -1,0 +1,212 @@
+# Architecture Decisions
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document records the initial architectural decisions already established by the platform specification.
+
+These decisions are binding for all future implementation work. They must not be replaced by ad hoc design choices.
+
+---
+
+# Decision 1: Architectural Style
+
+The platform will follow:
+
+- Clean Architecture
+- Modular Monolith in Phase 1
+- Microservice-ready structure for future scaling
+- Provider-based design
+- Domain-driven design
+- SOLID principles
+- Event-driven synchronization
+
+This means the system is designed to be maintainable, extensible, and testable while remaining practical to implement in phases.
+
+---
+
+# Decision 2: Layered Architecture
+
+The platform will be organized into four architectural layers:
+
+1. Presentation Layer
+   - Android TV application
+   - Admin dashboard
+   - Backend REST API
+
+2. Application Layer
+   - Use cases
+   - Services
+   - DTO mapping
+   - Validation
+
+3. Domain Layer
+   - Business rules
+   - Entities
+   - Interfaces
+   - Catalog logic
+   - Metadata logic
+   - Stream logic
+   - Search logic
+   - Recommendation logic
+   - Sync logic
+
+4. Infrastructure Layer
+   - Database access
+   - Providers
+   - Cache
+   - Filesystem storage
+   - Logging
+
+---
+
+# Decision 3: Dependency Direction
+
+The system must preserve the following dependency direction:
+
+Applications
+↓
+Core
+↓
+Interfaces
+↓
+Infrastructure
+
+This rule is mandatory. No layer may bypass the intended dependency flow.
+
+---
+
+# Decision 4: Provider Independence
+
+The core system must never depend directly on Cinemana or TMDB implementation details.
+
+The platform will use a provider abstraction layer so that:
+
+- Core business logic remains provider-agnostic
+- Providers remain isolated from the Core
+- New providers can be added without changing the Core
+
+The provider model is the primary integration boundary for external systems.
+
+---
+
+# Decision 5: Provider Model
+
+The platform will support a provider interface with the following responsibilities:
+
+- Health checks
+- Discovery
+- Search
+- Movie retrieval
+- Show retrieval
+- Season retrieval
+- Episode retrieval
+- Stream retrieval
+- Subtitle retrieval
+
+Each provider will be independently testable, stateless, and registered through dependency injection.
+
+---
+
+# Decision 6: Content Ownership
+
+Cinemana is the only content source.
+
+The platform rules are:
+
+- Cinemana may introduce content into the platform.
+- TMDB may enrich metadata only.
+- TMDB must not create movies, TV shows, or episodes.
+- Availability, streams, and subtitles belong to Cinemana.
+
+---
+
+# Decision 7: Data Platform
+
+The platform will use:
+
+- PostgreSQL as the primary relational database
+- Prisma ORM for schema and persistence
+- UUID primary keys
+- Soft delete semantics for major entities
+- Foreign keys and indexed relationships
+- Redis for cache, queues, and state management
+
+The database schema must remain provider-independent and strongly typed.
+
+---
+
+# Decision 8: Processing Model
+
+The platform will use background processing for heavy operations such as:
+
+- Import jobs
+- Metadata refresh
+- Artwork download
+- Search reindexing
+- Cleanup and maintenance tasks
+
+The architecture assumes asynchronous and queue-based execution to preserve performance and scalability.
+
+---
+
+# Decision 9: API Architecture
+
+The system will expose a REST API with versioning under:
+
+- /api/v1
+
+The backend API is the sole access layer for clients and must not expose provider internals or direct database access.
+
+Clients include:
+
+- Android TV
+- Admin dashboard
+- Future mobile and web applications
+
+---
+
+# Decision 10: Delivery Strategy
+
+Implementation will follow the approved roadmap in phases.
+
+The intended sequence is:
+
+1. Infrastructure and database foundation
+2. Core domain implementation
+3. Provider framework
+4. Cinemana provider
+5. TMDB provider
+6. Import pipeline
+7. Backend API
+8. Admin dashboard
+9. Android TV application
+10. Optimization and hardening
+11. Testing and production readiness
+
+This phased approach is mandatory and must not be bypassed.
+
+---
+
+# Decision 11: Quality Objectives
+
+All implementation work must prioritize:
+
+- Maintainability
+- Scalability
+- Extensibility
+- Testability
+- Performance
+- Security
+
+Short-term shortcuts are not acceptable if they compromise long-term architecture.
+
+---
+
+# Architectural Summary
+
+The architecture is a provider-driven, layered, clean-architecture platform with a modular monolith foundation and future-ready extension points. It is designed to support large-scale media import, metadata enrichment, and multi-client delivery while preserving strong separation of concerns.

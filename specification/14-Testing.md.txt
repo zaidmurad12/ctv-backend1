@@ -1,0 +1,628 @@
+# Testing
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the testing strategy for the CTV Platform.
+
+Testing ensures reliability, correctness, maintainability, and long-term stability across all platform components.
+
+Every feature implemented in the platform must be testable.
+
+---
+
+# Testing Principles
+
+Test Early
+
+Test Automatically
+
+Test Frequently
+
+Repeatable Results
+
+Independent Tests
+
+Deterministic Behavior
+
+No Manual Verification Required
+
+---
+
+# Testing Pyramid
+
+                End-to-End Tests
+                     ▲
+             Integration Tests
+                     ▲
+               Unit Tests
+
+Priority
+
+70% Unit Tests
+
+20% Integration Tests
+
+10% End-to-End Tests
+
+---
+
+# Test Categories
+
+Unit Tests
+
+Integration Tests
+
+API Tests
+
+Provider Tests
+
+Import Pipeline Tests
+
+Database Tests
+
+Performance Tests
+
+Security Tests
+
+Regression Tests
+
+End-to-End Tests
+
+---
+
+# Unit Testing
+
+Purpose
+
+Verify isolated business logic.
+
+Coverage
+
+Core
+
+Services
+
+Validators
+
+Utilities
+
+DTO Mapping
+
+Repositories (Mocked)
+
+---
+
+Framework
+
+Jest
+
+---
+
+Requirements
+
+Every service must have unit tests.
+
+Every validator must have unit tests.
+
+Every helper function must have unit tests.
+
+No external dependencies.
+
+No network calls.
+
+No database access.
+
+---
+
+# Integration Testing
+
+Purpose
+
+Verify module interaction.
+
+Includes
+
+Database
+
+Redis
+
+Queue
+
+Provider Integration
+
+Authentication
+
+Search
+
+Synchronization
+
+---
+
+Framework
+
+Jest
+
+Supertest
+
+---
+
+# API Testing
+
+Test
+
+Authentication
+
+Authorization
+
+Validation
+
+Pagination
+
+Sorting
+
+Filtering
+
+Caching
+
+Errors
+
+Rate Limiting
+
+---
+
+Every endpoint must verify
+
+Status Code
+
+Response Body
+
+Headers
+
+Authentication
+
+Permissions
+
+---
+
+# Provider Testing
+
+Every Provider must be tested independently.
+
+Verify
+
+Health
+
+Authentication
+
+Movie Discovery
+
+TV Discovery
+
+Search
+
+Streams
+
+Subtitles
+
+Retries
+
+Timeouts
+
+Rate Limiting
+
+---
+
+# Cinemana Testing
+
+Verify
+
+Movie Extraction
+
+TV Extraction
+
+Stream Extraction
+
+Subtitle Extraction
+
+Endpoint Discovery
+
+Authentication Recovery
+
+---
+
+# TMDB Testing
+
+Verify
+
+Movie Match
+
+Metadata
+
+Cast
+
+Crew
+
+Artwork
+
+Collections
+
+Retry Logic
+
+---
+
+# Import Pipeline Testing
+
+Verify
+
+Discovery
+
+Queue Creation
+
+Movie Import
+
+TV Import
+
+Stream Import
+
+Subtitle Import
+
+Metadata Import
+
+Artwork Download
+
+Validation
+
+Publishing
+
+---
+
+Interruptions
+
+Resume after failure.
+
+Retry failed stages.
+
+Prevent duplicates.
+
+---
+
+# Database Testing
+
+Verify
+
+Relations
+
+Indexes
+
+Constraints
+
+Cascade Rules
+
+Soft Delete
+
+Migration
+
+---
+
+# Search Testing
+
+Verify
+
+Arabic Search
+
+English Search
+
+Mixed Search
+
+Autocomplete
+
+Suggestions
+
+Pagination
+
+Sorting
+
+Filtering
+
+---
+
+# Android TV Testing
+
+Verify
+
+Navigation
+
+Focus
+
+Playback
+
+Player
+
+Resume Playback
+
+Subtitles
+
+Favorites
+
+Continue Watching
+
+Offline Cache
+
+Remote Control
+
+---
+
+# Admin Dashboard Testing
+
+Verify
+
+Authentication
+
+Permissions
+
+Dashboard Statistics
+
+Movie Management
+
+Import Management
+
+Provider Management
+
+System Monitoring
+
+Logs
+
+Settings
+
+---
+
+# Security Testing
+
+Verify
+
+JWT
+
+Authorization
+
+Permission Checks
+
+Input Validation
+
+Rate Limiting
+
+SQL Injection
+
+XSS
+
+CSRF
+
+Secrets Protection
+
+---
+
+# Performance Testing
+
+Verify
+
+API Response Time
+
+Search Speed
+
+Synchronization Speed
+
+Queue Throughput
+
+Import Throughput
+
+Database Performance
+
+Memory Usage
+
+CPU Usage
+
+---
+
+# Load Testing
+
+Simulate
+
+100 Users
+
+500 Users
+
+1000 Users
+
+5000 Users
+
+Measure
+
+Latency
+
+Errors
+
+Memory
+
+CPU
+
+Database
+
+Redis
+
+---
+
+# Regression Testing
+
+Every release must execute
+
+Unit Tests
+
+Integration Tests
+
+API Tests
+
+Security Tests
+
+Performance Tests
+
+---
+
+No release is allowed if regression tests fail.
+
+---
+
+# Test Data
+
+Dedicated Test Database
+
+Dedicated Redis
+
+Dedicated Environment
+
+No production data.
+
+---
+
+# Mocking Rules
+
+Mock
+
+TMDB
+
+Cinemana
+
+Redis
+
+Filesystem
+
+External APIs
+
+---
+
+Never mock
+
+Core Business Logic
+
+---
+
+# Continuous Integration
+
+Every Pull Request executes
+
+Lint
+
+Type Check
+
+Unit Tests
+
+Integration Tests
+
+Build
+
+---
+
+Deployment is blocked if any test fails.
+
+---
+
+# Code Coverage
+
+Minimum Overall
+
+90%
+
+Core
+
+95%
+
+Providers
+
+90%
+
+API
+
+90%
+
+Utilities
+
+95%
+
+---
+
+# Bug Severity
+
+Critical
+
+System unusable.
+
+Must fix immediately.
+
+---
+
+High
+
+Major feature broken.
+
+Fix before release.
+
+---
+
+Medium
+
+Feature partially affected.
+
+Fix in next release.
+
+---
+
+Low
+
+Minor issue.
+
+Schedule normally.
+
+---
+
+# Release Criteria
+
+A release is allowed only if
+
+✓ All tests pass.
+
+✓ Code coverage meets minimum requirements.
+
+✓ No critical bugs remain.
+
+✓ No high severity bugs remain.
+
+✓ Security tests pass.
+
+✓ Performance benchmarks pass.
+
+✓ Import pipeline passes end-to-end testing.
+
+✓ Android TV passes navigation and playback tests.
+
+✓ Admin Dashboard passes functional tests.
+
+---
+
+# Acceptance Criteria
+
+Testing strategy is complete when
+
+✓ Every module is testable.
+
+✓ Automated testing is integrated.
+
+✓ CI blocks failing builds.
+
+✓ Coverage requirements are enforced.
+
+✓ Regression testing protects existing functionality.
+
+✓ Critical platform workflows are fully validated.

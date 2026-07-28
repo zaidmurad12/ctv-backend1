@@ -1,0 +1,40 @@
+{
+  "name": "ctv-platform",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:backend": "pnpm --filter @ctv-platform/backend dev",
+    "dev:admin": "pnpm --filter @ctv-platform/admin dev",
+    "dev:android-tv": "pnpm --filter @ctv-platform/android-tv dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "validate:env": "node ./tools/validate-env.mjs",
+    "prepare": "husky install",
+    "ci": "pnpm lint && pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "eslint": "^9.14.0",
+    "prisma": "^5.9.0",
+    "eslint-config-prettier": "^9.0.0",
+    "globals": "^15.8.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.3.3",
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.2",
+    "zod": "^3.23.0"
+  }
+}

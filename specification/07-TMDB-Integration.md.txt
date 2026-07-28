@@ -1,0 +1,480 @@
+# TMDB Integration
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines how CTV Platform integrates with The Movie Database (TMDB).
+
+TMDB is used ONLY as a metadata provider.
+
+TMDB is NEVER considered a content provider.
+
+---
+
+# Primary Rule
+
+TMDB SHALL NEVER create a Movie.
+
+TMDB SHALL NEVER create a TV Show.
+
+TMDB SHALL NEVER create an Episode.
+
+Only Cinemana may introduce new content into the platform.
+
+---
+
+# Responsibilities
+
+TMDB is responsible for enriching existing content with metadata.
+
+It provides
+
+• Overview
+• Genres
+• Cast
+• Crew
+• Posters
+• Backdrops
+• Logos
+• Ratings
+• Vote Count
+• Runtime
+• Collections
+• Production Companies
+• Countries
+• Languages
+• Trailers
+• Release Dates
+• Keywords
+
+---
+
+# Integration Flow
+
+Movie Imported From Cinemana
+
+↓
+
+TMDB Match
+
+↓
+
+Metadata Download
+
+↓
+
+Validation
+
+↓
+
+Database Update
+
+---
+
+# Matching Strategy
+
+The platform must try matching using the following order.
+
+Priority 1
+
+IMDb ID
+
+---
+
+Priority 2
+
+TMDB External IDs
+
+---
+
+Priority 3
+
+Exact Original Title
+
++
+
+Release Year
+
+---
+
+Priority 4
+
+Exact English Title
+
++
+
+Release Year
+
+---
+
+Priority 5
+
+Normalized Arabic Title
+
++
+
+Release Year
+
+---
+
+Priority 6
+
+Fuzzy Match
+
+Similarity > 90%
+
+---
+
+# Validation
+
+A TMDB match is accepted only if
+
+Title Similarity
+
+Release Year
+
+Content Type
+
+all match correctly.
+
+---
+
+# Metadata Ownership
+
+Metadata belongs to TMDB.
+
+Availability belongs to Cinemana.
+
+Streams belong to Cinemana.
+
+Subtitles belong to Cinemana.
+
+---
+
+# Update Strategy
+
+Metadata should refresh
+
+Every 30 Days
+
+or
+
+When TMDB reports changes.
+
+---
+
+# Images
+
+Preferred Order
+
+Logo
+
+TMDB
+
+↓
+
+Provider
+
+---
+
+Poster
+
+TMDB
+
+↓
+
+Provider
+
+---
+
+Backdrop
+
+TMDB
+
+↓
+
+Provider
+
+---
+
+# Videos
+
+Only trailers may be imported.
+
+Full movie videos are prohibited.
+
+---
+
+# Collections
+
+Movie collections should be imported.
+
+Example
+
+John Wick Collection
+
+Harry Potter Collection
+
+The Dark Knight Collection
+
+---
+
+# Genres
+
+Genres must synchronize from TMDB.
+
+Genres should never be duplicated.
+
+---
+
+# Cast
+
+Store
+
+TMDB Person ID
+
+Name
+
+Character
+
+Order
+
+Photo
+
+Popularity
+
+---
+
+# Crew
+
+Store
+
+Director
+
+Writer
+
+Producer
+
+Composer
+
+Editor
+
+Cinematographer
+
+---
+
+# Companies
+
+Store
+
+Company ID
+
+Company Name
+
+Logo
+
+Country
+
+---
+
+# Countries
+
+Store
+
+ISO Code
+
+English Name
+
+Native Name
+
+---
+
+# Languages
+
+Store
+
+ISO Code
+
+English Name
+
+Native Name
+
+RTL
+
+---
+
+# Ratings
+
+Store
+
+Average Rating
+
+Vote Count
+
+Popularity
+
+Adult Flag
+
+---
+
+# Runtime
+
+Movie Runtime
+
+Episode Runtime
+
+TV Runtime
+
+---
+
+# TV Shows
+
+Import
+
+Show Metadata
+
+Season Metadata
+
+Episode Metadata
+
+---
+
+# Episode Matching
+
+Episode matching requires
+
+Season Number
+
+Episode Number
+
+TMDB Episode
+
+Cinemana Episode
+
+---
+
+# Missing Metadata
+
+If TMDB has no match
+
+Movie remains valid.
+
+Metadata may remain incomplete.
+
+---
+
+# Retry Policy
+
+Failed Match
+
+Retry after
+
+24 Hours
+
+---
+
+Failed Metadata Download
+
+Retry
+
+3 Times
+
+---
+
+Permanent Failure
+
+Mark
+
+MetadataPending
+
+---
+
+# Caching
+
+Movie Metadata
+
+30 Days
+
+Person Metadata
+
+90 Days
+
+Genre Metadata
+
+180 Days
+
+Configuration
+
+365 Days
+
+---
+
+# Rate Limiting
+
+Respect TMDB limits.
+
+Automatic retry.
+
+Exponential backoff.
+
+---
+
+# Logging
+
+Every TMDB request logs
+
+Movie ID
+
+TMDB ID
+
+Request Time
+
+Response Time
+
+Status
+
+---
+
+# Security
+
+TMDB API Key
+
+Stored only in Environment Variables.
+
+Never committed to source code.
+
+---
+
+# Acceptance Criteria
+
+TMDB integration is considered complete when
+
+✓ Movies are matched correctly.
+
+✓ TV Shows are matched correctly.
+
+✓ Seasons are matched correctly.
+
+✓ Episodes are matched correctly.
+
+✓ Metadata updates automatically.
+
+✓ Images download correctly.
+
+✓ Collections import correctly.
+
+✓ Cast imports correctly.
+
+✓ Crew imports correctly.
+
+✓ Companies import correctly.
+
+✓ No movie is created directly from TMDB.
+
+✓ No stream information is requested from TMDB.
+
+✓ No subtitle information is requested from TMDB.

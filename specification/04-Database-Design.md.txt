@@ -1,0 +1,957 @@
+# Database Design
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the complete database architecture for the CTV Platform.
+
+It specifies all entities, relationships, constraints, indexes, and data ownership rules.
+
+This document is the single source of truth for the database schema.
+
+---
+
+# Database Engine
+
+Primary Database
+
+PostgreSQL
+
+ORM
+
+Prisma ORM
+
+Primary Key Type
+
+UUID
+
+Timezone
+
+UTC
+
+Encoding
+
+UTF-8
+
+---
+
+# Design Principles
+
+• UUID Primary Keys
+• Soft Deletes
+• Audit Fields
+• Strong Relations
+• Foreign Keys
+• Indexed Search
+• Normalized Data
+• Provider Independent
+
+---
+
+# Core Entities
+
+Movies
+
+TV Shows
+
+Seasons
+
+Episodes
+
+Streams
+
+Subtitles
+
+Genres
+
+Collections
+
+People
+
+Companies
+
+Countries
+
+Languages
+
+Providers
+
+Images
+
+Import Jobs
+
+Sync Jobs
+
+Users
+
+Roles
+
+Favorites
+
+Watch History
+
+Continue Watching
+
+Settings
+
+---
+
+# Movie
+
+Represents a single movie.
+
+Fields
+
+id
+
+providerId
+
+tmdbId
+
+imdbId
+
+title
+
+originalTitle
+
+overview
+
+tagline
+
+releaseDate
+
+runtime
+
+status
+
+rating
+
+voteCount
+
+ageRating
+
+originalLanguage
+
+poster
+
+backdrop
+
+logo
+
+trailer
+
+popularity
+
+homepage
+
+budget
+
+revenue
+
+createdAt
+
+updatedAt
+
+deletedAt
+
+---
+
+Relations
+
+Genres
+
+Cast
+
+Crew
+
+Streams
+
+Subtitles
+
+Images
+
+Collection
+
+Provider
+
+---
+
+# TV Show
+
+Fields
+
+id
+
+providerId
+
+tmdbId
+
+imdbId
+
+title
+
+originalTitle
+
+overview
+
+status
+
+releaseDate
+
+lastAirDate
+
+numberOfSeasons
+
+numberOfEpisodes
+
+rating
+
+voteCount
+
+poster
+
+backdrop
+
+logo
+
+homepage
+
+popularity
+
+createdAt
+
+updatedAt
+
+deletedAt
+
+---
+
+Relations
+
+Genres
+
+Seasons
+
+Cast
+
+Crew
+
+Images
+
+Streams
+
+Subtitles
+
+---
+
+# Season
+
+Fields
+
+id
+
+showId
+
+seasonNumber
+
+name
+
+overview
+
+poster
+
+airDate
+
+episodeCount
+
+createdAt
+
+updatedAt
+
+---
+
+Relations
+
+Episodes
+
+TV Show
+
+---
+
+# Episode
+
+Fields
+
+id
+
+seasonId
+
+episodeNumber
+
+title
+
+overview
+
+runtime
+
+airDate
+
+rating
+
+voteCount
+
+stillImage
+
+createdAt
+
+updatedAt
+
+---
+
+Relations
+
+Streams
+
+Subtitles
+
+---
+
+# Stream
+
+Purpose
+
+Playable video source.
+
+Fields
+
+id
+
+movieId
+
+episodeId
+
+providerId
+
+quality
+
+codec
+
+language
+
+serverName
+
+streamUrl
+
+isDefault
+
+isActive
+
+createdAt
+
+updatedAt
+
+---
+
+Rules
+
+Movie OR Episode
+
+Never both.
+
+---
+
+# Subtitle
+
+Fields
+
+id
+
+movieId
+
+episodeId
+
+language
+
+format
+
+url
+
+isDefault
+
+provider
+
+createdAt
+
+updatedAt
+
+---
+
+Formats
+
+SRT
+
+VTT
+
+ASS
+
+SSA
+
+---
+
+# Genre
+
+Fields
+
+id
+
+tmdbId
+
+name
+
+slug
+
+---
+
+Many-to-Many
+
+Movies
+
+TV Shows
+
+---
+
+# Person
+
+Actors
+
+Directors
+
+Writers
+
+Fields
+
+id
+
+tmdbId
+
+name
+
+birthday
+
+deathday
+
+biography
+
+photo
+
+popularity
+
+---
+
+Relations
+
+Movies
+
+TV Shows
+
+---
+
+# Company
+
+Production Companies
+
+Fields
+
+id
+
+tmdbId
+
+name
+
+logo
+
+country
+
+homepage
+
+---
+
+# Country
+
+Fields
+
+id
+
+isoCode
+
+name
+
+nativeName
+
+---
+
+# Language
+
+Fields
+
+id
+
+isoCode
+
+englishName
+
+nativeName
+
+rtl
+
+---
+
+# Collection
+
+Movie Collections
+
+Fields
+
+id
+
+tmdbId
+
+title
+
+overview
+
+poster
+
+backdrop
+
+---
+
+# Provider
+
+Fields
+
+id
+
+name
+
+slug
+
+version
+
+baseUrl
+
+isEnabled
+
+priority
+
+healthStatus
+
+lastCheck
+
+createdAt
+
+---
+
+Initial Providers
+
+Cinemana
+
+TMDB
+
+---
+
+# Image
+
+Purpose
+
+Store all artwork.
+
+Fields
+
+id
+
+movieId
+
+showId
+
+type
+
+width
+
+height
+
+url
+
+provider
+
+createdAt
+
+---
+
+Types
+
+Poster
+
+Backdrop
+
+Logo
+
+Thumbnail
+
+Still
+
+---
+
+# Import Job
+
+Tracks import operations.
+
+Fields
+
+id
+
+provider
+
+status
+
+startedAt
+
+finishedAt
+
+processed
+
+failed
+
+logs
+
+createdAt
+
+---
+
+# Sync Job
+
+Tracks synchronization.
+
+Fields
+
+id
+
+provider
+
+startedAt
+
+finishedAt
+
+status
+
+newMovies
+
+updatedMovies
+
+failedMovies
+
+---
+
+# User
+
+Fields
+
+id
+
+email
+
+username
+
+passwordHash
+
+roleId
+
+isActive
+
+createdAt
+
+updatedAt
+
+---
+
+# Role
+
+Admin
+
+Editor
+
+Viewer
+
+---
+
+# Favorite
+
+Fields
+
+id
+
+userId
+
+movieId
+
+showId
+
+createdAt
+
+---
+
+# Watch History
+
+Fields
+
+id
+
+userId
+
+movieId
+
+episodeId
+
+position
+
+duration
+
+lastWatched
+
+---
+
+# Continue Watching
+
+Fields
+
+id
+
+userId
+
+movieId
+
+episodeId
+
+position
+
+updatedAt
+
+---
+
+# Settings
+
+Application settings.
+
+Key
+
+Value
+
+Type
+
+---
+
+# Relationships
+
+Movie
+
+↓
+
+Many Streams
+
+Movie
+
+↓
+
+Many Subtitles
+
+Movie
+
+↓
+
+Many Genres
+
+Movie
+
+↓
+
+Many Cast
+
+Movie
+
+↓
+
+Many Images
+
+Movie
+
+↓
+
+One Collection
+
+Movie
+
+↓
+
+One Provider
+
+---
+
+TV Show
+
+↓
+
+Many Seasons
+
+↓
+
+Many Episodes
+
+↓
+
+Many Streams
+
+↓
+
+Many Subtitles
+
+---
+
+# Indexes
+
+Movie
+
+tmdbId
+
+providerId
+
+title
+
+imdbId
+
+slug
+
+releaseDate
+
+---
+
+TV Show
+
+tmdbId
+
+title
+
+providerId
+
+---
+
+Episode
+
+seasonId
+
+episodeNumber
+
+---
+
+Stream
+
+movieId
+
+episodeId
+
+providerId
+
+---
+
+Subtitle
+
+movieId
+
+episodeId
+
+language
+
+---
+
+# Constraints
+
+Movie cannot exist without Provider.
+
+Stream must belong to Movie or Episode.
+
+Subtitle must belong to Movie or Episode.
+
+Episode must belong to Season.
+
+Season must belong to TV Show.
+
+---
+
+# Soft Delete
+
+All major entities support
+
+deletedAt
+
+instead of physical deletion.
+
+---
+
+# Cascade Rules
+
+Delete TV Show
+
+↓
+
+Delete Seasons
+
+↓
+
+Delete Episodes
+
+↓
+
+Delete Streams
+
+↓
+
+Delete Subtitles
+
+---
+
+# Database Rules
+
+Provider IDs must remain immutable.
+
+TMDB IDs must never be duplicated.
+
+Movie titles are NOT unique.
+
+UUID is mandatory.
+
+No nullable foreign keys unless documented.
+
+No JSON columns unless explicitly approved.
+
+---
+
+# Future Extensions
+
+User Profiles
+
+Recommendations
+
+Notifications
+
+Downloads
+
+Live TV
+
+Anime
+
+Multi Provider Library
+
+External Watchlists

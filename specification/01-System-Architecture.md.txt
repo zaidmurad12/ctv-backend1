@@ -1,0 +1,588 @@
+# System Architecture
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the complete software architecture of the CTV Platform.
+
+It explains every system component, the responsibility of each module, communication flow, dependencies, and architectural constraints.
+
+This document is considered the single source of truth for the platform architecture.
+
+---
+
+# Architectural Style
+
+The platform follows:
+
+• Clean Architecture
+• Modular Monolith (Phase 1)
+• Microservice Ready
+• Provider Based Design
+• Domain Driven Design (DDD)
+• SOLID Principles
+• Event Driven Synchronization
+
+---
+
+# High-Level Architecture
+
+                     Android TV
+                          │
+                          ▼
+                  Backend REST API
+                          │
+                          ▼
+                     Application Layer
+                          │
+                          ▼
+                     Domain (Core)
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+    Catalog           Metadata          Streams
+        ▼                 ▼                 ▼
+     Providers        Providers        Providers
+        ▼
+     Cinemana
+
+---
+
+# Architecture Layers
+
+Layer 1
+
+Presentation
+
+Responsibilities
+
+• Android TV
+• Admin Dashboard
+• REST Controllers
+
+---
+
+Layer 2
+
+Application
+
+Responsibilities
+
+• Use Cases
+• Services
+• DTO Mapping
+• Validation
+
+---
+
+Layer 3
+
+Domain
+
+Responsibilities
+
+• Business Rules
+• Entities
+• Interfaces
+• Search
+• Recommendation
+• Catalog Logic
+• Stream Logic
+
+---
+
+Layer 4
+
+Infrastructure
+
+Responsibilities
+
+• Database
+• Providers
+• TMDB
+• Cinemana
+• Cache
+• Filesystem
+• Logging
+
+---
+
+# Project Modules
+
+Apps
+
+Backend
+
+Purpose
+
+REST API
+
+Responsibilities
+
+Authentication
+
+Movie API
+
+TV API
+
+Search API
+
+Streaming API
+
+Subtitle API
+
+Sync API
+
+Admin API
+
+---
+
+Android TV
+
+Purpose
+
+TV Client
+
+Responsibilities
+
+Home
+
+Search
+
+Movie Details
+
+TV Shows
+
+Continue Watching
+
+Favorites
+
+Player
+
+Settings
+
+---
+
+Admin Dashboard
+
+Purpose
+
+Administration
+
+Responsibilities
+
+Monitoring
+
+Synchronization
+
+Logs
+
+Providers
+
+Manual Imports
+
+Users
+
+Configuration
+
+---
+
+Core
+
+Purpose
+
+Business Logic
+
+Core NEVER communicates directly with Cinemana.
+
+Core communicates only through Provider Interfaces.
+
+---
+
+Core Modules
+
+Catalog
+
+Metadata
+
+Streams
+
+Subtitles
+
+Search
+
+Recommendation
+
+Sync
+
+Scheduler
+
+Queue
+
+Auth
+
+---
+
+Providers
+
+Purpose
+
+External Systems
+
+Current Providers
+
+Cinemana
+
+TMDB
+
+Future
+
+Jellyfin
+
+Plex
+
+Custom Provider
+
+---
+
+Packages
+
+Purpose
+
+Reusable Code
+
+Database
+
+Logger
+
+Config
+
+Types
+
+SDK
+
+Common
+
+Utilities
+
+---
+
+Tools
+
+Purpose
+
+Development
+
+Inspector
+
+Endpoint Discovery
+
+Migration
+
+Seeder
+
+Testing
+
+---
+
+Storage
+
+Purpose
+
+Files
+
+Posters
+
+Backdrops
+
+Logos
+
+Trailers
+
+Subtitles
+
+Reports
+
+Cache
+
+Logs
+
+---
+
+# Dependency Rules
+
+Allowed
+
+Android
+
+↓
+
+Backend
+
+↓
+
+Core
+
+↓
+
+Provider Interface
+
+↓
+
+Providers
+
+↓
+
+External APIs
+
+---
+
+Forbidden
+
+Android
+
+↓
+
+Cinemana
+
+---
+
+Forbidden
+
+Core
+
+↓
+
+Cinemana
+
+---
+
+Forbidden
+
+TMDB
+
+↓
+
+Database
+
+---
+
+Forbidden
+
+Provider
+
+↓
+
+Android
+
+---
+
+# Provider Model
+
+Every Provider MUST implement:
+
+ProviderInterface
+
+Mandatory Methods
+
+search()
+
+movie()
+
+series()
+
+episode()
+
+streams()
+
+subtitles()
+
+health()
+
+discover()
+
+---
+
+# Synchronization Flow
+
+Scheduler
+
+↓
+
+Provider Discovery
+
+↓
+
+Movie Queue
+
+↓
+
+Details Queue
+
+↓
+
+Streams Queue
+
+↓
+
+Subtitle Queue
+
+↓
+
+TMDB Queue
+
+↓
+
+Database
+
+↓
+
+Search Index
+
+↓
+
+Android TV
+
+---
+
+# Event System
+
+Events
+
+MovieImported
+
+MovieUpdated
+
+SubtitleImported
+
+StreamUpdated
+
+ProviderFailed
+
+SyncCompleted
+
+MetadataUpdated
+
+SearchIndexed
+
+---
+
+# Caching Strategy
+
+Provider Responses
+
+24 Hours
+
+TMDB
+
+30 Days
+
+Search
+
+15 Minutes
+
+Home Screen
+
+5 Minutes
+
+---
+
+# Database Ownership
+
+Only Repository Layer may access Prisma.
+
+Core must NEVER use Prisma directly.
+
+---
+
+# Error Handling
+
+Every layer returns Result objects.
+
+Exceptions are only allowed in Infrastructure.
+
+---
+
+# Logging
+
+Every request receives
+
+Correlation ID
+
+Every import receives
+
+Import Session ID
+
+Every synchronization receives
+
+Sync Job ID
+
+---
+
+# Security
+
+JWT Authentication
+
+Role Based Access
+
+Rate Limiting
+
+Provider Isolation
+
+Secrets in Environment Variables
+
+---
+
+# Scalability
+
+Target
+
+500,000 Movies
+
+100,000 Episodes
+
+5,000 Concurrent Users
+
+Millions of API Requests
+
+---
+
+# Future Migration
+
+Current
+
+Modular Monolith
+
+Future
+
+Microservices
+
+No Core module should require refactoring during migration.
+
+---
+
+# Architecture Principles
+
+Provider Independent
+
+Strongly Typed
+
+Dependency Injection
+
+Single Responsibility
+
+Repository Pattern
+
+CQRS Ready
+
+Event Driven
+
+Performance First
+
+Testable
+
+Maintainable

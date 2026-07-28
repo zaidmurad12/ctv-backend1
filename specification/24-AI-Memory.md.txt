@@ -1,0 +1,177 @@
+# AI Memory
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document serves as the cumulative memory file for the CTV Platform.
+
+It should be updated at the end of each implementation phase so that future work remains consistent with the documented architecture, roadmap, and project state.
+
+---
+
+# Project Identity
+
+Project Name
+
+CTV Platform
+
+Purpose
+
+A production-grade Android TV VOD platform that imports content from Cinemana, enriches metadata through TMDB, exposes a backend API, supports an admin dashboard, and delivers a modern Android TV experience.
+
+---
+
+# Current Project State
+
+Repository Status
+
+- The repository contains the intended monorepo structure and documentation scaffold.
+- The engineering foundation for Phase 0 has been established.
+- The project is now prepared for phased implementation with tooling and repository infrastructure in place.
+
+Implementation Status
+
+- The workspace now uses TurboRepo and pnpm workspaces.
+- Shared TypeScript configuration has been added.
+- ESLint, Prettier, Husky, and lint-staged are configured.
+- Docker and Docker Compose foundation files are present.
+- Environment example configuration is available.
+- GitHub Actions CI workflow is configured.
+- Root package scripts are defined for build, lint, format, typecheck, and CI.
+- No production application code has been implemented.
+- No database schema has been created.
+- No provider framework has been implemented.
+- No import pipeline has been implemented.
+- No complete backend API has been implemented.
+- No Android TV application has been implemented.
+
+---
+
+# Source of Truth
+
+All implementation decisions must be derived from the specification set in the specification folder.
+
+The authoritative documents are:
+
+- Project Overview
+- System Architecture
+- Folder Structure
+- Technology Stack
+- Database Design
+- Provider Architecture
+- Cinemana Reverse Engineering
+- TMDB Integration
+- Import Pipeline
+- Backend API
+- Android TV
+- Admin Dashboard
+- Security
+- Performance
+- Testing
+- Engineering Rules
+- Implementation Roadmap
+- Coding Conventions
+- Configuration Reference
+- Claude Master Prompt
+
+---
+
+# Architectural Baseline
+
+The platform is designed around the following decisions:
+
+- Clean Architecture
+- Modular Monolith in Phase 1
+- Provider-based integration model
+- Core independence from external providers
+- Cinemana as the only content source
+- TMDB as a metadata enrichment provider only
+- PostgreSQL and Prisma as the persistence foundation
+- Redis and BullMQ for caching and asynchronous workers
+- REST API as the main client integration contract
+- Android TV and admin dashboard as client applications
+
+---
+
+# Delivery Constraints
+
+The following constraints must remain in effect during all future work:
+
+- Do not invent architecture.
+- Do not invent API endpoints.
+- Do not invent database fields.
+- Do not invent provider behavior.
+- Follow the roadmap in order.
+- Do not begin application implementation before the required foundation is in place.
+- Do not modify the roadmap without explicit approval.
+
+---
+
+# Current Implementation Focus
+
+The project has moved from repository foundation into Milestone 1 Sprint 1: the Core Domain.
+
+The current work focuses on:
+
+- creating a pure domain layer in TypeScript
+- implementing domain entities with validation and invariants
+- introducing value objects for domain-safe primitives
+- defining repository interfaces for the business model
+- introducing domain events and domain-specific errors
+- keeping the implementation completely free of Prisma, infrastructure, providers, HTTP, and persistence concerns
+
+No infrastructure or application-layer implementation should be introduced at this stage.
+
+---
+
+# Phase Update Template
+
+Each future phase should update this memory file with:
+
+- Phase name
+- Status
+- Major deliverables completed
+- Architectural decisions validated or clarified
+- Risks or blockers discovered
+- Tests and verification completed
+- Next recommended actions
+
+## Milestone 1 Sprint 1 + Sprint 2 Update
+
+Status: Completed
+
+Major deliverables completed:
+- Added a framework-independent domain package under packages/domain.
+- Implemented domain entities for Movie, TVShow, Season, and Episode.
+- Implemented value objects for Title, Slug, UrlValue, Rating, and Duration.
+- Added repository interfaces for movies, TV shows, seasons, and episodes.
+- Added domain events and domain errors.
+- Introduced EntityBase, AggregateRoot, and ValueObjectBase abstractions.
+- Introduced Result and Either patterns for domain-safe outcomes.
+- Introduced EventBus and DomainEventDispatcher.
+- Introduced factory classes for the core entities.
+- Added a domain-services folder for pure domain behavior.
+- Verified compilation with TypeScript.
+
+Architectural decisions validated:
+- The domain layer remains independent from Prisma, Redis, HTTP, providers, and infrastructure.
+- Domain invariants, validation, and lifecycle behavior are centralized in the domain layer.
+- Shared abstractions now support richer domain patterns without introducing infrastructure concerns.
+
+Verification completed:
+- TypeScript validation passed for the domain package.
+
+Next recommended actions:
+- Review the expanded domain abstractions before moving to infrastructure.
+
+---
+
+# Memory Maintenance Rule
+
+After every completed phase, this document should be updated to reflect the new project state.
+
+The memory must remain accurate, concise, and implementation-oriented so it can guide subsequent phases without reintroducing architectural drift.

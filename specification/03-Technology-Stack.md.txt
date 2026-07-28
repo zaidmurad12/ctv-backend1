@@ -1,0 +1,697 @@
+# Technology Stack
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the official technology stack used by the CTV Platform.
+
+Every service, application, and module must follow the technologies defined in this document.
+
+Introducing a new technology requires updating this specification.
+
+---
+
+# General Philosophy
+
+The platform is built using technologies that provide:
+
+• High Performance
+• Strong Typing
+• Long-Term Support
+• Scalability
+• Enterprise Readiness
+• Large Community Support
+
+---
+
+# Programming Languages
+
+Backend
+
+TypeScript
+
+Version
+
+Latest Stable
+
+---
+
+Frontend
+
+TypeScript
+
+---
+
+Android TV
+
+Kotlin
+
+Jetpack Compose
+
+---
+
+Database Scripts
+
+SQL
+
+Prisma Schema
+
+---
+
+# Backend
+
+Framework
+
+NestJS
+
+Purpose
+
+REST API
+
+Dependency Injection
+
+Authentication
+
+Background Jobs
+
+Modules
+
+Validation
+
+Configuration
+
+---
+
+Required Packages
+
+NestJS Core
+
+NestJS Config
+
+NestJS JWT
+
+NestJS Passport
+
+NestJS Swagger
+
+NestJS Schedule
+
+NestJS Cache
+
+NestJS Throttler
+
+NestJS Event Emitter
+
+---
+
+# Database
+
+Primary Database
+
+PostgreSQL
+
+ORM
+
+Prisma
+
+Migration Tool
+
+Prisma Migrate
+
+Connection Pool
+
+Prisma Engine
+
+---
+
+# Cache
+
+Redis
+
+Purpose
+
+Search Cache
+
+Home Cache
+
+TMDB Cache
+
+Provider Cache
+
+Rate Limiting
+
+Session Storage
+
+Queue State
+
+---
+
+# Queue System
+
+BullMQ
+
+Redis Based
+
+Purpose
+
+Movie Import
+
+Subtitle Import
+
+Metadata Sync
+
+Image Download
+
+Search Index
+
+Scheduled Jobs
+
+---
+
+# Search
+
+Primary
+
+PostgreSQL Full Text Search
+
+Future
+
+Elasticsearch
+
+---
+
+# Object Storage
+
+Local Storage
+
+Phase 1
+
+Future
+
+S3 Compatible Storage
+
+MinIO
+
+Cloudflare R2
+
+AWS S3
+
+---
+
+# Networking
+
+HTTP Client
+
+Axios
+
+Retry Logic
+
+Exponential Backoff
+
+Timeout Control
+
+Interceptors
+
+---
+
+# Browser Automation
+
+Playwright
+
+Purpose
+
+Reverse Engineering
+
+API Discovery
+
+Authentication
+
+Cookie Extraction
+
+JavaScript Analysis
+
+Network Inspection
+
+---
+
+# HTML Parsing
+
+Cheerio
+
+Purpose
+
+HTML Parsing
+
+Fallback Parsing
+
+Metadata Extraction
+
+---
+
+# Authentication
+
+JWT
+
+Refresh Tokens
+
+Role Based Access Control
+
+Passport
+
+---
+
+# Validation
+
+class-validator
+
+class-transformer
+
+---
+
+# API Documentation
+
+Swagger OpenAPI
+
+Generated Automatically
+
+---
+
+# Logging
+
+Pino
+
+Purpose
+
+Application Logs
+
+Provider Logs
+
+Import Logs
+
+Performance Logs
+
+Error Logs
+
+Audit Logs
+
+---
+
+# Monitoring
+
+Future
+
+Prometheus
+
+Grafana
+
+OpenTelemetry
+
+---
+
+# Android TV
+
+Language
+
+Kotlin
+
+UI
+
+Jetpack Compose
+
+Navigation
+
+Navigation Compose
+
+Networking
+
+Retrofit
+
+Serialization
+
+Kotlinx Serialization
+
+Dependency Injection
+
+Hilt
+
+Image Loading
+
+Coil
+
+Video Player
+
+Media3 ExoPlayer
+
+---
+
+# Admin Dashboard
+
+Framework
+
+Next.js
+
+Language
+
+TypeScript
+
+UI
+
+Material UI
+
+State Management
+
+TanStack Query
+
+Forms
+
+React Hook Form
+
+Validation
+
+Zod
+
+Charts
+
+Recharts
+
+---
+
+# Styling
+
+Android
+
+Material Design 3
+
+Admin
+
+Material UI
+
+---
+
+# Image Processing
+
+Sharp
+
+Purpose
+
+Resize
+
+Compress
+
+Convert
+
+Thumbnail Generation
+
+---
+
+# Scheduling
+
+NestJS Schedule
+
+Cron Jobs
+
+Daily Sync
+
+Health Checks
+
+Cleanup
+
+---
+
+# Testing
+
+Unit Testing
+
+Jest
+
+Integration Testing
+
+Supertest
+
+E2E
+
+Playwright
+
+---
+
+# Build Tools
+
+Node.js
+
+Latest LTS
+
+Package Manager
+
+pnpm
+
+Workspace
+
+TurboRepo
+
+---
+
+# CI/CD
+
+GitHub Actions
+
+Build
+
+Test
+
+Lint
+
+Docker Build
+
+Deploy
+
+---
+
+# Containers
+
+Docker
+
+Docker Compose
+
+Future
+
+Kubernetes
+
+---
+
+# Code Quality
+
+ESLint
+
+Prettier
+
+TypeScript Strict Mode
+
+Husky
+
+Lint Staged
+
+---
+
+# Environment Variables
+
+dotenv
+
+NestJS Config
+
+Validation Required
+
+---
+
+# Security
+
+Helmet
+
+CORS
+
+Rate Limiting
+
+Input Validation
+
+Parameterized Queries
+
+Environment Secrets
+
+---
+
+# Version Control
+
+Git
+
+Main Branch
+
+main
+
+Development Branch
+
+develop
+
+Feature Branches
+
+feature/*
+
+Hotfix Branches
+
+hotfix/*
+
+---
+
+# API Style
+
+REST
+
+JSON
+
+UTF-8
+
+Camel Case
+
+Versioned APIs
+
+/api/v1
+
+---
+
+# File Formats
+
+Images
+
+jpg
+
+png
+
+webp
+
+avif
+
+Subtitles
+
+srt
+
+vtt
+
+ass
+
+Videos
+
+Not Stored
+
+Only Referenced
+
+---
+
+# Time Handling
+
+UTC Storage
+
+Local Conversion
+
+ISO8601
+
+---
+
+# Naming Conventions
+
+Language
+
+English
+
+Database
+
+snake_case
+
+TypeScript
+
+camelCase
+
+Classes
+
+PascalCase
+
+Constants
+
+UPPER_CASE
+
+Enums
+
+PascalCase
+
+---
+
+# Performance Targets
+
+API Response
+
+<200ms
+
+Search
+
+<300ms
+
+Home Screen
+
+<2s
+
+Movie Details
+
+<500ms
+
+Import Throughput
+
+1000+ Movies/Hour
+
+---
+
+# Supported Platforms
+
+Backend
+
+Windows
+
+Linux
+
+Docker
+
+Android TV
+
+Android 9+
+
+Admin
+
+Chrome
+
+Edge
+
+Firefox
+
+Safari
+
+---
+
+# Technology Rules
+
+Only technologies defined in this document are allowed.
+
+Replacing any framework requires updating this specification.
+
+Experimental libraries are prohibited.
+
+Production-ready libraries are mandatory.
+
+TypeScript Strict Mode is mandatory.
+
+No JavaScript source files are allowed in production code.
+
+Every dependency must have an active maintenance status.
+
+Security updates must be applied regularly.
+
+The project must remain compatible with long-term support versions whenever possible.

@@ -1,0 +1,346 @@
+# CTV Platform — Development Milestones
+
+Version: 1.0
+
+Status: Active
+
+---
+
+# Purpose
+
+This document defines the major development milestones of the CTV Platform.
+
+Unlike the implementation roadmap, milestones represent engineering goals that can be independently completed, reviewed, and approved before work continues.
+
+Every milestone consists of multiple sprints.
+
+A milestone is considered complete only after:
+
+- Implementation
+- Verification
+- Documentation update
+- Architecture review
+- Approval
+
+---
+
+# Milestone 1
+
+## Core Domain
+
+Status:
+✅ In Progress / Sprint 1 and Sprint 2 Complete
+
+Objective:
+
+Build the complete business domain without infrastructure.
+
+Scope:
+
+- Domain Entities
+- Value Objects
+- Domain Events
+- Repository Interfaces
+- Use Cases
+- Validators
+- Domain Services
+
+Deliverables:
+
+✓ Pure TypeScript
+
+✓ No Prisma
+
+✓ No Database
+
+✓ No Providers
+
+✓ No HTTP
+
+---
+
+# Milestone 2
+
+## Infrastructure
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Implement infrastructure required by the Domain.
+
+Scope:
+
+- Prisma
+- PostgreSQL
+- Redis
+- BullMQ
+- Repository Implementations
+- Transactions
+- Caching
+
+Deliverables:
+
+✓ Infrastructure only
+
+---
+
+# Milestone 3
+
+## Provider Framework
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Build the provider abstraction layer.
+
+Scope:
+
+- Provider SDK
+- Provider Registry
+- Provider Health
+- Provider Config
+- Provider Discovery
+- Retry Policy
+
+Deliverables:
+
+✓ Generic Provider Framework
+
+---
+
+# Milestone 4
+
+## Import Pipeline
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Implement automated ingestion pipeline.
+
+Scope:
+
+- Discovery
+- Metadata
+- Streams
+- Subtitles
+- Matching
+- Validation
+- Publishing
+
+Deliverables:
+
+✓ Full synchronization pipeline
+
+---
+
+# Milestone 5
+
+## Backend API
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Expose application functionality through REST APIs.
+
+Scope:
+
+- Authentication
+- Search
+- Catalog
+- Favorites
+- Watch History
+- Continue Watching
+- Admin APIs
+
+Deliverables:
+
+✓ Production REST API
+
+---
+
+# Milestone 6
+
+## Admin Dashboard
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Build administration interface.
+
+Scope:
+
+- Dashboard
+- Jobs
+- Providers
+- Monitoring
+- Users
+- Logs
+- Settings
+
+Deliverables:
+
+✓ Complete Admin UI
+
+---
+
+# Milestone 7
+
+## Android TV Application
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Develop Android TV client.
+
+Scope:
+
+- Authentication
+- Home
+- Catalog
+- Details
+- Player
+- Search
+- Settings
+
+Deliverables:
+
+✓ Production Android TV App
+
+---
+
+# Milestone 8
+
+## Optimization
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Optimize performance and scalability.
+
+Scope:
+
+- Cache
+- Search
+- Recommendations
+- Image Optimization
+- Query Optimization
+- Performance Monitoring
+
+Deliverables:
+
+✓ Production Performance
+
+---
+
+# Milestone 9
+
+## Production
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Prepare production deployment.
+
+Scope:
+
+- Docker
+- CI/CD
+- Monitoring
+- Backup
+- Recovery
+- Security Audit
+- Release
+
+Deliverables:
+
+✓ Production Ready Platform
+
+---
+
+# Milestone Workflow
+
+Every milestone follows the same lifecycle:
+
+Planning
+
+↓
+
+Implementation
+
+↓
+
+Verification
+
+↓
+
+Architecture Review
+
+↓
+
+Documentation Update
+
+↓
+
+Approval
+
+↓
+
+Next Milestone
+
+---
+
+# Completion Rules
+
+A milestone is completed only if:
+
+✓ Build passes
+
+✓ Lint passes
+
+✓ TypeScript passes
+
+✓ Tests pass
+
+✓ Documentation updated
+
+✓ AI Memory updated
+
+✓ Architecture approved
+
+✓ Design review completed
+
+Otherwise:
+
+Status = In Progress
+
+---
+
+# Current Progress
+
+| Milestone | Status |
+|------------|--------|
+| 1 | ⬜ Not Started |
+| 2 | ⬜ Not Started |
+| 3 | ⬜ Not Started |
+| 4 | ⬜ Not Started |
+| 5 | ⬜ Not Started |
+| 6 | ⬜ Not Started |
+| 7 | ⬜ Not Started |
+| 8 | ⬜ Not Started |
+| 9 | ⬜ Not Started |

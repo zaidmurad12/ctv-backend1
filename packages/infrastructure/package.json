@@ -1,0 +1,23 @@
+{
+  "name": "@ctv-platform/infrastructure",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src tests --ext .ts,.js"
+  },
+  "dependencies": {
+    "@ctv-platform/domain": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

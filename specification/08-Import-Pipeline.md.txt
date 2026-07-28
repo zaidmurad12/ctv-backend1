@@ -1,0 +1,772 @@
+# Import Pipeline
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the complete content import workflow of the CTV Platform.
+
+It describes every stage from discovering content on Cinemana until the content becomes available inside the Android TV application.
+
+This pipeline is the heart of the platform.
+
+---
+
+# Philosophy
+
+Import is fully automatic.
+
+No manual intervention should be required under normal conditions.
+
+Every stage must be restartable.
+
+Every stage must be independently testable.
+
+Every stage must produce logs.
+
+---
+
+# High-Level Pipeline
+
+Cinemana Discovery
+
+↓
+
+Movie Queue
+
+↓
+
+Movie Details
+
+↓
+
+Stream Discovery
+
+↓
+
+Subtitle Discovery
+
+↓
+
+TMDB Matching
+
+↓
+
+Metadata Enrichment
+
+↓
+
+Artwork Download
+
+↓
+
+Validation
+
+↓
+
+Database
+
+↓
+
+Search Index
+
+↓
+
+Android TV
+
+---
+
+# Pipeline Stages
+
+Stage 1
+
+Catalog Discovery
+
+Purpose
+
+Discover all available movies and TV shows from Cinemana.
+
+Output
+
+Catalog Items
+
+Fields
+
+Provider ID
+
+Title
+
+Content Type
+
+Provider URL
+
+Discovery Date
+
+---
+
+Stage 2
+
+Content Queue
+
+Purpose
+
+Create processing jobs.
+
+One queue item per movie.
+
+One queue item per TV show.
+
+Priority
+
+Newest
+
+↓
+
+Recently Updated
+
+↓
+
+Old Library
+
+---
+
+Stage 3
+
+Movie Details
+
+Purpose
+
+Extract provider information.
+
+Extract
+
+Provider ID
+
+Title
+
+Artwork
+
+Availability
+
+Provider Metadata
+
+---
+
+Stage 4
+
+TV Details
+
+Purpose
+
+Extract TV show structure.
+
+Extract
+
+Seasons
+
+Episodes
+
+Episode Count
+
+Episode Availability
+
+---
+
+Stage 5
+
+Stream Discovery
+
+Purpose
+
+Extract every playable stream.
+
+Store
+
+Quality
+
+Language
+
+Server
+
+Playback URL
+
+HDR
+
+Codec
+
+Default Stream
+
+---
+
+Stage 6
+
+Subtitle Discovery
+
+Purpose
+
+Extract subtitles.
+
+Store
+
+Language
+
+Format
+
+URL
+
+Default
+
+Provider
+
+---
+
+Stage 7
+
+TMDB Match
+
+Purpose
+
+Find the correct TMDB entry.
+
+Matching Order
+
+IMDb
+
+↓
+
+TMDB External ID
+
+↓
+
+Exact Title
+
+↓
+
+Title + Year
+
+↓
+
+Fuzzy Match
+
+---
+
+Stage 8
+
+Metadata Import
+
+Download
+
+Overview
+
+Genres
+
+Cast
+
+Crew
+
+Runtime
+
+Collection
+
+Companies
+
+Countries
+
+Languages
+
+Keywords
+
+Trailers
+
+---
+
+Stage 9
+
+Artwork
+
+Download
+
+Poster
+
+Backdrop
+
+Logo
+
+Still Images
+
+Collection Artwork
+
+---
+
+Stage 10
+
+Validation
+
+Verify
+
+Movie Exists
+
+Streams Exist
+
+Metadata Exists
+
+Artwork Exists
+
+No Duplicate
+
+Provider Valid
+
+---
+
+Stage 11
+
+Database
+
+Save
+
+Movie
+
+Relations
+
+Streams
+
+Subtitles
+
+Images
+
+Cast
+
+Genres
+
+Collections
+
+---
+
+Stage 12
+
+Search Index
+
+Update
+
+Search Tables
+
+Search Cache
+
+Recommendations
+
+---
+
+Stage 13
+
+Publish
+
+Movie becomes visible inside
+
+Android TV
+
+Admin Dashboard
+
+Backend API
+
+---
+
+# Import Modes
+
+Full Import
+
+Imports entire provider.
+
+---
+
+Incremental Import
+
+Imports only changes.
+
+---
+
+Manual Import
+
+Imports one movie.
+
+---
+
+Daily Sync
+
+Imports new content.
+
+---
+
+Metadata Refresh
+
+Updates TMDB only.
+
+---
+
+Artwork Refresh
+
+Updates posters and backdrops.
+
+---
+
+# TV Show Pipeline
+
+Catalog
+
+↓
+
+TV Details
+
+↓
+
+Season Discovery
+
+↓
+
+Episode Discovery
+
+↓
+
+Episode Streams
+
+↓
+
+Episode Subtitles
+
+↓
+
+TMDB Match
+
+↓
+
+Metadata
+
+↓
+
+Database
+
+↓
+
+Search
+
+---
+
+# Queue System
+
+Queues
+
+Discovery Queue
+
+Movie Queue
+
+TV Queue
+
+Stream Queue
+
+Subtitle Queue
+
+TMDB Queue
+
+Artwork Queue
+
+Validation Queue
+
+Search Queue
+
+---
+
+# Queue Priority
+
+Critical
+
+New Releases
+
+High
+
+Recently Updated
+
+Medium
+
+Old Library
+
+Low
+
+Metadata Refresh
+
+---
+
+# Retry Policy
+
+Timeout
+
+Retry
+
+3
+
+Network Error
+
+Retry
+
+5
+
+Rate Limit
+
+Retry Later
+
+Provider Error
+
+Retry
+
+Authentication Error
+
+Refresh Login
+
+Validation Error
+
+Stop
+
+---
+
+# Duplicate Protection
+
+Provider ID
+
+Unique
+
+TMDB ID
+
+Unique
+
+IMDb ID
+
+Unique
+
+Stream
+
+Unique Per Provider
+
+Subtitle
+
+Unique Per Language
+
+---
+
+# Validation Rules
+
+Movie must contain
+
+Provider ID
+
+At least one Stream
+
+Valid Status
+
+Valid Type
+
+---
+
+TV Show must contain
+
+Provider ID
+
+Season List
+
+Episode List
+
+---
+
+Episode must contain
+
+Season
+
+Episode Number
+
+At least one Stream
+
+---
+
+# Failure Handling
+
+If a stage fails
+
+Save Progress
+
+Create Log
+
+Retry Later
+
+Never restart from the beginning
+
+---
+
+# Progress Tracking
+
+Each Import Job stores
+
+Started Time
+
+Finished Time
+
+Current Stage
+
+Current Item
+
+Progress Percentage
+
+Errors
+
+Retries
+
+Duration
+
+---
+
+# Import States
+
+Pending
+
+Running
+
+Paused
+
+Retrying
+
+Completed
+
+Failed
+
+Cancelled
+
+---
+
+# Logging
+
+Each stage logs
+
+Import Job ID
+
+Provider
+
+Movie ID
+
+Stage
+
+Duration
+
+Status
+
+Error
+
+---
+
+# Metrics
+
+Imported Movies
+
+Imported Shows
+
+Imported Episodes
+
+Imported Streams
+
+Imported Subtitles
+
+Failed Imports
+
+Average Import Time
+
+Average Match Time
+
+---
+
+# Daily Synchronization
+
+Every 24 Hours
+
+Run
+
+Discovery
+
+↓
+
+New Movies
+
+↓
+
+Updated Movies
+
+↓
+
+Streams
+
+↓
+
+Subtitles
+
+↓
+
+Metadata Refresh
+
+↓
+
+Search Refresh
+
+---
+
+# Weekly Tasks
+
+Metadata Refresh
+
+Artwork Refresh
+
+Broken Stream Check
+
+Subtitle Validation
+
+Provider Health Check
+
+---
+
+# Monthly Tasks
+
+Full Library Validation
+
+Duplicate Detection
+
+Database Cleanup
+
+Search Optimization
+
+Image Cleanup
+
+---
+
+# Acceptance Criteria
+
+The Import Pipeline is considered complete when
+
+✓ Every available Cinemana movie is imported.
+
+✓ Every TV show is imported.
+
+✓ Every episode is imported.
+
+✓ Every available stream is imported.
+
+✓ Every subtitle is imported.
+
+✓ Every movie is matched with TMDB when possible.
+
+✓ Artwork is downloaded automatically.
+
+✓ Validation prevents duplicates.
+
+✓ Search is updated automatically.
+
+✓ Android TV displays imported content without manual intervention.
+
+✓ Interrupted imports can resume from the last successful stage.
+
+✓ Daily synchronization completes without user interaction.

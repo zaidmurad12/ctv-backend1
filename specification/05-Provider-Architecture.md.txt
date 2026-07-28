@@ -1,0 +1,560 @@
+# Provider Architecture
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the Provider Architecture used by CTV Platform.
+
+Providers are responsible only for communicating with external systems.
+
+Business logic MUST NEVER exist inside Providers.
+
+Providers must remain isolated from the Core.
+
+---
+
+# Definition
+
+A Provider is an adapter between CTV Platform and an external content source.
+
+Examples
+
+• Cinemana
+• TMDB
+• Jellyfin
+• Plex
+• Future APIs
+
+---
+
+# Core Principle
+
+Core does not know Cinemana.
+
+Core does not know TMDB.
+
+Core only knows ProviderInterface.
+
+---
+
+# Architecture
+
+Android TV
+
+↓
+
+Backend API
+
+↓
+
+Core
+
+↓
+
+Provider Interface
+
+↓
+
+Provider
+
+↓
+
+External API
+
+---
+
+# Responsibilities
+
+Providers may
+
+✔ Authenticate
+
+✔ Send Requests
+
+✔ Parse Responses
+
+✔ Map External Objects
+
+✔ Handle Provider Errors
+
+✔ Report Health
+
+Providers must NOT
+
+✖ Apply Business Rules
+
+✖ Save Database
+
+✖ Call Prisma
+
+✖ Cache Business Data
+
+✖ Execute Synchronization
+
+✖ Know Android
+
+✖ Know Backend Controllers
+
+---
+
+# Provider Interface
+
+Every Provider MUST implement the following interface.
+
+```typescript
+interface ProviderInterface {
+
+    health()
+
+    discover()
+
+    search()
+
+    movie()
+
+    show()
+
+    season()
+
+    episode()
+
+    streams()
+
+    subtitles()
+
+}
+```
+
+---
+
+# Provider Lifecycle
+
+Application Starts
+
+↓
+
+Provider Registered
+
+↓
+
+Health Check
+
+↓
+
+Authentication
+
+↓
+
+Available
+
+---
+
+# Provider States
+
+Healthy
+
+Unavailable
+
+Maintenance
+
+Disabled
+
+Authentication Failed
+
+Rate Limited
+
+Unknown
+
+---
+
+# Provider Registration
+
+Providers are registered using Dependency Injection.
+
+Providers are never instantiated manually.
+
+---
+
+# Provider Discovery
+
+The system automatically discovers all registered providers.
+
+No provider names should be hardcoded.
+
+---
+
+# Provider Priority
+
+Each provider has
+
+Priority
+
+Lower number = Higher priority
+
+Example
+
+Cinemana
+
+Priority = 1
+
+TMDB
+
+Priority = 2
+
+Future Provider
+
+Priority = 10
+
+---
+
+# Cinemana Provider
+
+Purpose
+
+Content Discovery
+
+Responsibilities
+
+Movie Catalog
+
+TV Shows
+
+Streams
+
+Subtitles
+
+Availability
+
+---
+
+# TMDB Provider
+
+Purpose
+
+Metadata Enrichment
+
+Responsibilities
+
+Overview
+
+Genres
+
+Cast
+
+Crew
+
+Images
+
+Logos
+
+Collections
+
+Ratings
+
+Trailers
+
+Runtime
+
+Companies
+
+Countries
+
+Languages
+
+---
+
+# Future Providers
+
+The architecture must support unlimited providers.
+
+Adding a provider must not require modifications to:
+
+Core
+
+Backend
+
+Android
+
+Database
+
+---
+
+# Provider Isolation
+
+Providers never communicate directly.
+
+Forbidden
+
+Cinemana
+
+↓
+
+TMDB
+
+Allowed
+
+Core
+
+↓
+
+Cinemana
+
+↓
+
+Core
+
+↓
+
+TMDB
+
+---
+
+# Data Mapping
+
+Providers return External DTOs.
+
+Core converts them into Domain Models.
+
+External Models never enter the Database directly.
+
+---
+
+# Error Handling
+
+Providers never throw raw HTTP errors.
+
+They return standardized ProviderResult objects.
+
+Possible Errors
+
+Timeout
+
+Unauthorized
+
+Forbidden
+
+Not Found
+
+Rate Limited
+
+Invalid Response
+
+Unknown Error
+
+---
+
+# Authentication
+
+Every provider manages its own authentication.
+
+Authentication logic never leaves the Provider.
+
+---
+
+# Health Checks
+
+Every provider must expose
+
+health()
+
+Returns
+
+Healthy
+
+Unavailable
+
+Latency
+
+Version
+
+Last Check
+
+---
+
+# Rate Limiting
+
+Every provider defines
+
+Maximum Requests
+
+Retry Strategy
+
+Backoff Strategy
+
+Cooldown
+
+---
+
+# Retry Policy
+
+Network Error
+
+Retry
+
+Timeout
+
+Retry
+
+429
+
+Retry with Delay
+
+401
+
+Refresh Authentication
+
+404
+
+No Retry
+
+500
+
+Retry
+
+---
+
+# Caching
+
+Providers may cache raw responses.
+
+Providers must never cache business entities.
+
+Cache Examples
+
+Movie Response
+
+Search Response
+
+Subtitle Response
+
+Stream Response
+
+---
+
+# Versioning
+
+Each provider declares
+
+Provider Version
+
+API Version
+
+Minimum Supported Version
+
+---
+
+# Logging
+
+Every request logs
+
+Correlation ID
+
+Provider Name
+
+Endpoint
+
+Duration
+
+Result
+
+---
+
+# Monitoring
+
+Every provider reports
+
+Availability
+
+Latency
+
+Failures
+
+Retries
+
+Success Rate
+
+---
+
+# Security
+
+Secrets stored in Environment Variables.
+
+No credentials in source code.
+
+HTTPS only.
+
+Certificate validation enabled.
+
+---
+
+# Folder Structure
+
+providers/
+
+cinemana/
+
+api/
+
+client/
+
+mapper/
+
+models/
+
+services/
+
+types/
+
+tmdb/
+
+api/
+
+client/
+
+mapper/
+
+models/
+
+services/
+
+types/
+
+---
+
+# Provider Rules
+
+Every Provider MUST
+
+Implement ProviderInterface.
+
+Be stateless.
+
+Be independently testable.
+
+Be replaceable.
+
+Be isolated.
+
+Support Dependency Injection.
+
+Never access Prisma.
+
+Never access Android.
+
+Never access Controllers.
+
+Never import another Provider.
+
+---
+
+# Future Expansion
+
+The platform should support adding a new provider by creating a single new folder inside
+
+providers/
+
+without modifying any Core module.

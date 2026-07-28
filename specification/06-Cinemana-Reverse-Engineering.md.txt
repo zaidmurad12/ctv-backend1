@@ -1,0 +1,584 @@
+# Cinemana Reverse Engineering
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines how CTV Platform communicates with Cinemana.
+
+It specifies the discovery process, endpoint analysis, request flow,
+authentication strategy, stream extraction, subtitle extraction,
+and synchronization rules.
+
+This document defines WHAT the system should achieve.
+
+Implementation details may evolve as Cinemana changes.
+
+---
+
+# Important Principle
+
+Cinemana is the ONLY content provider.
+
+No movie shall exist inside the platform unless it exists on Cinemana.
+
+TMDB NEVER creates content.
+
+TMDB only enriches metadata.
+
+---
+
+# Reverse Engineering Philosophy
+
+The system MUST NOT depend on undocumented assumptions.
+
+Every API endpoint must be discovered automatically.
+
+The platform must tolerate endpoint changes.
+
+---
+
+# Discovery Workflow
+
+Browser
+
+↓
+
+Network Inspection
+
+↓
+
+Endpoint Discovery
+
+↓
+
+Request Classification
+
+↓
+
+Response Analysis
+
+↓
+
+Schema Mapping
+
+↓
+
+Provider Models
+
+↓
+
+Core
+
+---
+
+# Discovery Tools
+
+Playwright
+
+Network Inspector
+
+API Analyzer
+
+Endpoint Tester
+
+Cookie Analyzer
+
+JavaScript Analyzer
+
+---
+
+# Endpoint Categories
+
+Catalog
+
+Movie Details
+
+TV Details
+
+Episode Details
+
+Streams
+
+Subtitles
+
+Search
+
+Authentication
+
+Configuration
+
+Images
+
+Heartbeat
+
+Health
+
+---
+
+# Required Provider Capabilities
+
+The provider must be able to discover
+
+Movies
+
+TV Shows
+
+Episodes
+
+Streams
+
+Subtitles
+
+Categories
+
+Search Results
+
+---
+
+# Catalog Discovery
+
+The provider must support discovering
+
+Newest Movies
+
+Popular Movies
+
+Trending Movies
+
+Latest TV Shows
+
+Latest Episodes
+
+Categories
+
+Genres
+
+Collections (if available)
+
+---
+
+# Search
+
+Provider must support
+
+Movie Search
+
+TV Search
+
+Arabic Search
+
+English Search
+
+Mixed Search
+
+Partial Search
+
+---
+
+# Movie Details
+
+Provider must extract
+
+Provider Movie ID
+
+Title
+
+Available Streams
+
+Available Subtitles
+
+Availability Status
+
+Artwork URLs
+
+Provider Metadata
+
+---
+
+# TV Show Details
+
+Provider must extract
+
+Provider Show ID
+
+Season List
+
+Episode List
+
+Episode Availability
+
+Episode Streams
+
+Episode Subtitles
+
+---
+
+# Stream Extraction
+
+Every stream must contain
+
+Provider Stream ID
+
+Quality
+
+Server Name
+
+Playback URL
+
+Codec (if available)
+
+Language
+
+HDR Support (if available)
+
+Audio Information
+
+---
+
+# Subtitle Extraction
+
+Each subtitle must contain
+
+Language
+
+Format
+
+Download URL
+
+Default Flag
+
+Provider Name
+
+---
+
+# Artwork
+
+Provider artwork is considered temporary.
+
+TMDB artwork replaces Provider artwork whenever available.
+
+---
+
+# Provider Identifier
+
+Every movie imported from Cinemana must permanently store
+
+providerId
+
+This value never changes.
+
+---
+
+# Synchronization Strategy
+
+Daily
+
+Discover new titles.
+
+Update existing titles.
+
+Refresh streams.
+
+Refresh subtitles.
+
+Refresh artwork.
+
+---
+
+# Synchronization Priority
+
+1
+
+New Movies
+
+2
+
+New TV Shows
+
+3
+
+Updated Streams
+
+4
+
+Updated Subtitles
+
+5
+
+Metadata Refresh
+
+---
+
+# Change Detection
+
+The provider must detect
+
+New Movies
+
+Removed Movies
+
+Updated Streams
+
+Updated Subtitles
+
+Updated Metadata
+
+Unavailable Content
+
+---
+
+# Availability Rules
+
+Movie Available
+
+Import
+
+Movie Missing
+
+Ignore
+
+Movie Removed
+
+Mark Inactive
+
+Movie Restored
+
+Reactivate
+
+---
+
+# Stream Rules
+
+Movie may contain multiple streams.
+
+Streams must never overwrite each other.
+
+Inactive streams remain stored.
+
+---
+
+# Subtitle Rules
+
+Multiple subtitle languages are allowed.
+
+Multiple subtitle formats are allowed.
+
+Existing subtitles are updated only when changed.
+
+---
+
+# Authentication
+
+Authentication must remain isolated inside the Provider.
+
+Core never manages Cinemana authentication.
+
+---
+
+# Cookies
+
+Provider is responsible for
+
+Cookie Storage
+
+Cookie Refresh
+
+Cookie Validation
+
+Cookie Expiration
+
+---
+
+# Headers
+
+Provider owns all required HTTP headers.
+
+No header logic outside Provider.
+
+---
+
+# Request Rules
+
+Every request must contain
+
+Correlation ID
+
+Retry Policy
+
+Timeout
+
+User Agent
+
+Provider Version
+
+---
+
+# Retry Strategy
+
+Timeout
+
+Retry
+
+429
+
+Retry Later
+
+500
+
+Retry
+
+404
+
+Stop
+
+401
+
+Refresh Authentication
+
+---
+
+# Error Handling
+
+Provider never throws raw HTTP errors.
+
+Provider returns standardized errors.
+
+---
+
+# Performance
+
+Requests should be minimized.
+
+Duplicate requests prohibited.
+
+Batch operations preferred.
+
+---
+
+# Rate Limiting
+
+Provider must detect
+
+Rate Limits
+
+Cooldown
+
+Temporary Blocks
+
+Permanent Blocks
+
+---
+
+# Caching
+
+Allowed
+
+Catalog
+
+Movie Details
+
+Search
+
+Configuration
+
+Forbidden
+
+Streams
+
+Subtitles
+
+Authentication
+
+---
+
+# Logging
+
+Every request logs
+
+Timestamp
+
+Endpoint
+
+Duration
+
+Response Code
+
+Provider
+
+Correlation ID
+
+---
+
+# Security
+
+HTTPS Only
+
+Validate Certificates
+
+Never expose Cookies
+
+Never expose Tokens
+
+Never expose Internal Endpoints
+
+---
+
+# Reverse Engineering Rules
+
+The platform must never depend on
+
+Hardcoded URLs
+
+Hardcoded Tokens
+
+Hardcoded Cookies
+
+Hardcoded JavaScript
+
+---
+
+# Adaptability
+
+If Cinemana changes
+
+Endpoints
+
+Headers
+
+Authentication
+
+Response Schema
+
+the Provider should be updated without modifying
+
+Core
+
+Backend
+
+Android TV
+
+Database
+
+---
+
+# Acceptance Criteria
+
+The Cinemana Provider is considered complete when it can
+
+✓ Discover all available movies.
+
+✓ Discover all TV shows.
+
+✓ Extract all streams.
+
+✓ Extract all subtitles.
+
+✓ Detect removed content.
+
+✓ Synchronize changes automatically.
+
+✓ Recover after provider changes with minimal updates.
