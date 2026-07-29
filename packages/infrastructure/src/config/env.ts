@@ -17,7 +17,10 @@ const envSchema = z.object({
     .transform((value) => value === 'true'),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
-  REDIS_PASSWORD: z.string().min(1).optional(),
+  REDIS_PASSWORD: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
   QUEUE_PREFIX: z.string().min(1).default('ctv'),
   QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(10),

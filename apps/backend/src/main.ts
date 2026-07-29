@@ -1,11 +1,25 @@
 import 'reflect-metadata';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { createBackendConfig } from './config/backendConfig.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// apps/backend/dist/main.js -> repo root, where the shared .env lives.
+function loadRootEnv(): void {
+  try {
+    process.loadEnvFile(path.resolve(__dirname, '../../../.env'));
+  } catch {
+    // No .env file (e.g. real environment variables are already set) — proceed.
+  }
+}
+
 async function bootstrap(): Promise<void> {
+  loadRootEnv();
   const config = createBackendConfig();
   const app = await NestFactory.create(AppModule);
 
