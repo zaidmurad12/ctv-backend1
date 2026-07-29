@@ -114,11 +114,11 @@ The following constraints must remain in effect during all future work:
 # Current Implementation Focus
 
 Milestones 1 (Core Domain), 2 (Infrastructure), 3 (Provider Framework),
-4 (Import Pipeline), and 5 (Backend API) are complete. The next unstarted
-milestone is Milestone 6 (Admin Dashboard).
+4 (Import Pipeline), 5 (Backend API), and 6 (Admin Dashboard) are complete.
+The next unstarted milestone is Milestone 7 (Android TV Application).
 
-No concrete provider (Cinemana, TMDB), admin dashboard, or Android TV
-implementation should be introduced before Milestone 6 begins. A fully
+No concrete provider (Cinemana, TMDB) or Android TV implementation should
+be introduced before Milestone 7 begins. A fully
 functional Cinemana provider was explicitly evaluated before Milestone 5
 began and confirmed to require unauthorized reverse-engineering (no
 authorized endpoint, no browser-automation tooling, only a placeholder
@@ -318,6 +318,41 @@ Tests and verification completed:
 Next recommended actions:
 - Begin Milestone 6 (Admin Dashboard): Dashboard, Jobs, Providers, Monitoring, Users, Logs, Settings — the first consumer of Milestone 5's Admin APIs over a real UI.
 - When a concrete Cinemana provider is eventually built and authorized, register it into the shared `ProviderRegistry` so Milestone 5's Admin "providers" endpoints and dashboard statistics reflect real data instead of an empty registry.
+
+## Milestone 6 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `apps/admin` / `@ctv-platform/admin`, a Next.js Pages Router application):
+
+- **Technology**: Next.js 15 (Pages Router, per `specification/02-Folder-Structure.md.txt`'s `admin/src/{pages,components,layouts,hooks,services,styles,assets}` layout), Material UI, TanStack Query, React Hook Form + Zod, Recharts — exactly the stack named in `specification/03-Technology-Stack.md.txt` "Admin Dashboard", nothing extra.
+- **Auth**: `AuthContext` (JWT login via `POST /auth/login`, tokens in `localStorage`, silent `POST /auth/refresh`-then-retry-once on a 401 via `apiClient`, sign-out on refresh failure) and a `login` page; route protection redirects unauthenticated users to `/login` and authenticated users away from it.
+- **Layout & navigation**: `AdminLayout`/`Sidebar`/`Topbar` — responsive (temporary drawer on mobile, permanent on desktop), dark/light theme toggle (persisted, defaults to system preference), a global search box, and a user menu. Sidebar items are filtered by role: sections built on the backend's `/admin/*` namespace (Dashboard, Providers, Import Jobs, Synchronization, Health Monitoring, Users, Roles & Permissions, Audit Logs, Settings) are hidden from EDITOR/VIEWER because the backend itself 403s them (`AdminController` is `@Roles('ADMIN')` outright, per Milestone 5) — this mirrors real backend enforcement rather than an independent UI-only permission model.
+- **Reusable components**: one `DataTable` (search, optional filter slot, sortable headers, pagination, loading skeleton, empty state, error state) backs every list page; `EmptyState`, `ErrorState` (distinguishes a genuine error from a 404 "not implemented yet" via `ApiError.isNotImplemented`), `StatCard`, `ConfirmDialog`, `PageHeader`, `RoleGuard` round out the shared component set. `usePaginatedQuery` is the one hook wiring pagination/search/sort state to TanStack Query for every list page.
+- **Pages**: Dashboard (stats + catalog-composition chart + live provider status), Movies/TV Shows/Seasons/Episodes (browse, search, sort, paginate, detail tabs for streams/subtitles/images, with honest empty states for cast/crew/collection/provider-info/sync-history/logs — none of which have a domain aggregate or endpoint), Providers (real list + live health + real manual discovery trigger + enable/disable/reload stubs), Import Jobs, Synchronization (real per-provider discovery trigger + full/incremental/refresh/validate stubs + queue-monitoring stats), Health Monitoring (real `GET /health` + live provider health, polled every 30s), Users (real list/search/paginate + real role/active-status edit via `PATCH /admin/users/:id`; create/delete/reset-password are stubs since no such backend endpoint exists), Roles & Permissions (static reference matrix — roles are a closed backend enum, not a dynamic permissions API), Audit Logs (stub, matching `specification/12-Security.md.txt` "Audit Log" fields exactly: user/action/timestamp/IP/target/result), Settings (Zod-validated form across General/Provider/Import/Player/Search, stub persistence), and a global Search page (real, movies/shows).
+- **Honest handling of unimplemented backend areas**: per the milestone's explicit instruction ("If an endpoint is not yet implemented, use typed service abstractions instead of hardcoded mock data"), every service module (`src/services/*Service.ts`) defines the full typed request/response contract for its section and calls the namespaced REST path a future backend endpoint would use. Where Milestone 5 has no such endpoint (Import Jobs, Synchronization status, Settings, Audit Logs, and a few Provider/User mutation actions), the call 404s and the UI shows an explicit "not available yet" state — never a fabricated number or a silently-successful fake save.
+- 20 tests (`node --test`, consistent with every prior milestone): `permissions.test.ts` (the RBAC matrix), `apiClient.test.ts` (envelope unwrapping, `ApiError` mapping, and the 401-refresh-then-retry-once flow against a mocked `fetch`), and three component tests (`DataTable`, `RoleGuard`, `Login`) via `@testing-library/react` — the latter two render against a fake `<AuthContext.Provider>` value (the context is exported for exactly this purpose) rather than the real `AuthProvider`, avoiding a Next.js router dependency in tests.
+- `apps/admin/README.md` documenting every section, the typed-stub convention, and the dependency version notes below.
+
+Architectural decisions validated:
+- `apps/admin` depends on nothing else in the workspace — it talks to `apps/backend` purely over HTTP with its own local DTO types mirroring the backend's JSON shapes, the same "decoupled deployable" posture a real browser-based admin client would have.
+- `packages/domain`, `packages/infrastructure`, `packages/sdk`, `services/importer`, and `apps/backend` (Milestones 1–5) were **not modified**.
+- RBAC gating in the UI is derived from, and must stay consistent with, actual backend enforcement (`isAdmin()` gates the whole `/admin/*`-backed sections) rather than an independently invented permission model — see `src/lib/permissions.ts`.
+
+**Dependency version regression discovered and worked around**: `@mui/material@9.2.0` (the version resolved as "latest" when this milestone began) has a polymorphic-component typing regression — `Typography`/`Stack`/etc. fail to type-check when passed their own documented props (`variant`, `fontWeight`, `direction`, `spacing`, `justifyContent`, ...), with TypeScript falling back to a bare HTML-element overload and reporting "No overload matches this call" everywhere across the app (~30 errors, unrelated to any code mistake — confirmed by testing an upgraded `typescript` version first, which didn't help). Downgrading to the stable `@mui/material@7.3.11`/`@mui/icons-material@7.3.11` line resolved every instance with zero source changes. `typescript` was also bumped to `^5.9.3` for `apps/admin` specifically (not workspace-wide — scoped to this package's own `devDependency`, leaving every other package's pinned `^5.7.2` untouched) for compatibility with current `@types/react`/Next.js tooling. Any future attempt to upgrade MUI past v7 in this app should first verify the v9 regression has been fixed upstream.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana/TMDB) exists — Providers/Synchronization correctly show an empty registry, consistent with every prior milestone.
+- Import Jobs, Synchronization status/queue metrics, Settings, Audit Logs, admin create/delete-user, reset-password, and provider enable/disable/reload all call real, typed, namespaced endpoints the backend doesn't implement yet — this is the direct continuation of gaps already documented in the Milestone 4 and 5 updates (no `Person`/`Company`/`Genre`/`Collection` aggregate, no `Setting`/audit-log wiring, no persisted job history).
+- Genres, Collections, People, and a generic "System" resources page (CPU/memory/disk) from the full `specification/11-Admin-Dashboard.md.txt` spec are out of scope for this milestone — the user's Milestone 6 instructions enumerated a narrower section list than the full spec document, and that narrower, explicitly-given list is what was built (Storage and a standalone "System" page were dropped; "Health Monitoring" absorbed the health-relevant parts of "System").
+- True push-based real-time updates (spec's "Real-time Updates") would need a WebSocket/SSE backend endpoint that doesn't exist; Provider Health and backend Health instead poll every 30 seconds via TanStack Query's `refetchInterval`.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer + 33 backend + 20 admin = 250 tests). The built admin app was also smoke-tested by starting a local production server and confirming `/login`, `/` (dashboard, pre-auth loading shell), `/movies`, and a 404 route all respond correctly.
+
+Next recommended actions:
+- Begin Milestone 7 (Android TV Application): Authentication, Home, Catalog, Details, Player, Search, Settings — the first consumer of the public (non-admin) parts of Milestone 5's Backend API.
+- When a concrete Cinemana provider is eventually built and authorized, and when the backend gains Settings/Audit Log/Import Job history endpoints, wire the corresponding admin pages' real calls in without any UI rework — they already call the correct typed contracts.
 
 ---
 

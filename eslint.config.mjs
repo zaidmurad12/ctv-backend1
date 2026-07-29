@@ -26,6 +26,10 @@ export default [
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/consistent-type-imports': 'error',
+      // TypeScript itself already reports undefined identifiers, but understands
+      // ambient/global *type* names (e.g. DOM lib types like `RequestInfo`) that
+      // this core rule doesn't — leading to false positives in type positions.
+      'no-undef': 'off',
     },
   },
   {

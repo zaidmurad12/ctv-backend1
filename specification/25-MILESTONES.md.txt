@@ -222,7 +222,7 @@ for usage.
 ## Admin Dashboard
 
 Status:
-⬜ Not Started
+✅ Completed
 
 Objective:
 
@@ -241,6 +241,25 @@ Scope:
 Deliverables:
 
 ✓ Complete Admin UI
+
+Implemented in `apps/admin` (`@ctv-platform/admin`), a new Next.js (Pages
+Router) workspace member using Material UI, TanStack Query, React Hook
+Form, Zod, and Recharts, per `specification/03-Technology-Stack.md.txt`.
+Talks exclusively to `apps/backend` (Milestone 5) over HTTP: JWT login/
+session, RBAC-gated navigation matching the backend's actual `/admin/*`
+enforcement, Movies/TV Shows/Seasons/Episodes browsing with search/sort/
+pagination, Providers (live health + real manual discovery trigger),
+Import Jobs, Synchronization, Health Monitoring, Users (real list/role
+management), Roles & Permissions (reference matrix), Audit Logs, and
+Application Settings. Every list is paginated/filterable/searchable via one
+shared `DataTable` component; every form is Zod-validated; every screen has
+loading/empty/error states, including an explicit "not available yet"
+state (rather than fabricated data) for the several sections the backend
+doesn't implement an endpoint for yet — see
+`specification/24-AI-Memory.md.txt` (Milestone 6 Update) for the full
+deliverable list, the MUI version regression discovered during this
+milestone, and documented scope boundaries, and `apps/admin/README.md`
+for usage.
 
 ---
 
@@ -391,7 +410,7 @@ Status = In Progress
 | 3 | ✅ Completed |
 | 4 | ✅ Completed |
 | 5 | ✅ Completed |
-| 6 | ⬜ Not Started |
+| 6 | ✅ Completed |
 | 7 | ⬜ Not Started |
 | 8 | ⬜ Not Started |
 | 9 | ⬜ Not Started |
