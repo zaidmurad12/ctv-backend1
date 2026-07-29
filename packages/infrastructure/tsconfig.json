@@ -8,13 +8,9 @@
     "composite": false,
     "moduleResolution": "NodeNext",
     "module": "NodeNext",
-    "target": "ES2022",
-    "baseUrl": "../..",
-    "paths": {
-      "@ctv-platform/domain": ["packages/domain/src/index.ts"]
-    },
-    "noEmit": true
+    "target": "ES2022"
   },
+  "references": [{ "path": "../domain" }],
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

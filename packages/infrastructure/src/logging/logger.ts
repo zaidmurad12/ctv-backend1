@@ -24,7 +24,11 @@ export class ConsoleLogger implements Logger {
     this.write('error', message, meta);
   }
 
-  private write(level: 'debug' | 'info' | 'warn' | 'error', message: string, meta?: Record<string, unknown>): void {
+  private write(
+    level: 'debug' | 'info' | 'warn' | 'error',
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
     const levels = ['debug', 'info', 'warn', 'error'];
     if (levels.indexOf(level) < levels.indexOf(this.level)) {
       return;

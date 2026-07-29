@@ -24,5 +24,9 @@ jobs:
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
+      - name: Generate Prisma Client
+        run: pnpm db:generate
       - name: Build
         run: pnpm build
+      - name: Test
+        run: pnpm test

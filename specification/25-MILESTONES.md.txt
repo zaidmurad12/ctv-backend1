@@ -29,7 +29,7 @@ A milestone is considered complete only after:
 ## Core Domain
 
 Status:
-✅ In Progress / Sprint 1 and Sprint 2 Complete
+✅ Completed
 
 Objective:
 
@@ -64,7 +64,7 @@ Deliverables:
 ## Infrastructure
 
 Status:
-⬜ Not Started
+✅ Completed
 
 Objective:
 
@@ -83,6 +83,15 @@ Scope:
 Deliverables:
 
 ✓ Infrastructure only
+
+Implemented in `packages/infrastructure`: generated Prisma client, a
+Prisma <-> domain mapping layer, Prisma-backed repositories for Movie/TVShow/
+Season/Episode, a transactional `PrismaUnitOfWork`, a Redis-backed cache
+client, a BullMQ-backed queue client, database/Redis health checks, and a
+dependency-injection composition root registering all of the above as
+singletons. See `specification/24-AI-Memory.md.txt` (Milestone 2 Update) for
+the full deliverable list and known gaps, and `packages/infrastructure/README.md`
+for usage.
 
 ---
 
@@ -335,8 +344,8 @@ Status = In Progress
 
 | Milestone | Status |
 |------------|--------|
-| 1 | ⬜ Not Started |
-| 2 | ⬜ Not Started |
+| 1 | ✅ Completed |
+| 2 | ✅ Completed |
 | 3 | ⬜ Not Started |
 | 4 | ⬜ Not Started |
 | 5 | ⬜ Not Started |

@@ -1,7 +1,32 @@
+import type { RedisConnection } from './client.js';
+
 export interface CacheClient {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds?: number): Promise<void>;
   del(key: string): Promise<void>;
+}
+
+/**
+ * Redis-backed cache client used in every environment except unit tests.
+ */
+export class RedisCacheClient implements CacheClient {
+  constructor(private readonly redis: RedisConnection) {}
+
+  async get(key: string): Promise<string | null> {
+    return this.redis.get(key);
+  }
+
+  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    if (ttlSeconds) {
+      await this.redis.set(key, value, 'EX', ttlSeconds);
+      return;
+    }
+    await this.redis.set(key, value);
+  }
+
+  async del(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
 }
 
 export class MemoryCache implements CacheClient {

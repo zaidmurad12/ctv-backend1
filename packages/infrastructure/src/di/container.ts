@@ -12,14 +12,16 @@ export class Container {
   registerSingleton<T>(key: string, factory: Constructor<T> | (() => T)): void {
     this.registrations.set(key, {
       kind: 'singleton',
-      factory: () => (typeof factory === 'function' ? (factory as () => T)() : new (factory as Constructor<T>)()),
+      factory: () =>
+        typeof factory === 'function' ? (factory as () => T)() : new (factory as Constructor<T>)(),
     });
   }
 
   registerTransient<T>(key: string, factory: Constructor<T> | (() => T)): void {
     this.registrations.set(key, {
       kind: 'transient',
-      factory: () => (typeof factory === 'function' ? (factory as () => T)() : new (factory as Constructor<T>)()),
+      factory: () =>
+        typeof factory === 'function' ? (factory as () => T)() : new (factory as Constructor<T>)(),
     });
   }
 

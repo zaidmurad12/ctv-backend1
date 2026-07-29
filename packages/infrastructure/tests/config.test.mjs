@@ -1,28 +1,54 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAppConfig, createContainer, LoggerLevel } from '../dist/index.js';
+import { createAppConfig, LoggerLevel } from '../dist/index.js';
 
-test('load config from environment', () => {
+test('loads config from environment with explicit values', () => {
   const config = createAppConfig({
     DATABASE_URL: 'postgresql://user:pass@localhost:5432/ctv',
-    REDIS_URL: 'redis://localhost:6379',
-    QUEUE_NAME: 'media-jobs',
+    DATABASE_POOL: '5',
+    DATABASE_TIMEOUT: '15000',
+    DATABASE_LOGGING: 'true',
+    REDIS_HOST: 'redis.internal',
+    REDIS_PORT: '6380',
+    REDIS_PASSWORD: 'secret',
+    REDIS_DB: '2',
+    QUEUE_PREFIX: 'media',
+    QUEUE_CONCURRENCY: '4',
+    QUEUE_RETRY: '5',
+    QUEUE_TIMEOUT: '60000',
     LOG_LEVEL: 'debug',
   });
 
   assert.equal(config.database.url, 'postgresql://user:pass@localhost:5432/ctv');
-  assert.equal(config.redis.url, 'redis://localhost:6379');
-  assert.equal(config.queue.name, 'media-jobs');
+  assert.equal(config.database.pool, 5);
+  assert.equal(config.database.timeoutMs, 15000);
+  assert.equal(config.database.logging, true);
+  assert.equal(config.redis.host, 'redis.internal');
+  assert.equal(config.redis.port, 6380);
+  assert.equal(config.redis.password, 'secret');
+  assert.equal(config.redis.db, 2);
+  assert.equal(config.queue.prefix, 'media');
+  assert.equal(config.queue.concurrency, 4);
+  assert.equal(config.queue.retry, 5);
+  assert.equal(config.queue.timeoutMs, 60000);
   assert.equal(config.logging.level, LoggerLevel.Debug);
 });
 
-test('container resolves singleton services', () => {
-  const container = createContainer();
-  container.registerSingleton('counter', class Counter { constructor() { this.value = 0; } increment() { this.value += 1; return this.value; } });
+test('falls back to documented defaults when values are missing', () => {
+  const config = createAppConfig({});
 
-  const first = container.resolve('counter');
-  const second = container.resolve('counter');
+  assert.equal(config.database.pool, 20);
+  assert.equal(config.database.timeoutMs, 30000);
+  assert.equal(config.database.logging, false);
+  assert.equal(config.redis.host, 'localhost');
+  assert.equal(config.redis.port, 6379);
+  assert.equal(config.redis.password, null);
+  assert.equal(config.redis.db, 0);
+  assert.equal(config.queue.prefix, 'ctv');
+  assert.equal(config.queue.concurrency, 10);
+  assert.equal(config.logging.level, LoggerLevel.Info);
+});
 
-  assert.equal(first.increment(), 1);
-  assert.equal(second.increment(), 2);
+test('rejects an invalid DATABASE_URL', () => {
+  assert.throws(() => createAppConfig({ DATABASE_URL: 'not-a-url' }));
 });

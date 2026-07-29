@@ -113,18 +113,11 @@ The following constraints must remain in effect during all future work:
 
 # Current Implementation Focus
 
-The project has moved from repository foundation into Milestone 1 Sprint 1: the Core Domain.
+Milestone 1 (Core Domain) and Milestone 2 (Infrastructure) are complete. The
+next unstarted milestone is Milestone 3 (Provider Framework).
 
-The current work focuses on:
-
-- creating a pure domain layer in TypeScript
-- implementing domain entities with validation and invariants
-- introducing value objects for domain-safe primitives
-- defining repository interfaces for the business model
-- introducing domain events and domain-specific errors
-- keeping the implementation completely free of Prisma, infrastructure, providers, HTTP, and persistence concerns
-
-No infrastructure or application-layer implementation should be introduced at this stage.
+No provider, application-layer, or client implementation should be introduced
+before Milestone 3 begins.
 
 ---
 
@@ -167,6 +160,43 @@ Verification completed:
 
 Next recommended actions:
 - Review the expanded domain abstractions before moving to infrastructure.
+
+## Milestone 2 Update
+
+Status: Completed
+
+Major deliverables completed:
+- Generated the Prisma Client package from `prisma/schema.prisma` and wired `pnpm db:generate` at the root.
+- Added additive `reconstitute()` factories to the Movie, TVShow, Season, and Episode domain entities so infrastructure can rehydrate aggregates from persisted state without re-running creation invariants. This was the one necessary domain change for this milestone; no existing domain behavior changed.
+- Implemented a Prisma <-> domain mapping layer (`MovieMapper`, `TVShowMapper`, `SeasonMapper`, `EpisodeMapper`) under `packages/infrastructure/src/prisma/mappers`, translating Prisma rows to domain aggregates and back.
+- Implemented `PrismaMovieRepository`, `PrismaTVShowRepository`, `PrismaSeasonRepository`, and `PrismaEpisodeRepository`, replacing the previous stub implementations (which always returned `null`/`[]`). Movie/TVShow reads respect soft-delete (`deletedAt: null`); Season/Episode have no soft-delete column in the schema.
+- Implemented `PrismaUnitOfWork.execute()`, which runs a callback inside a single Prisma `$transaction` and hands it repository instances bound to the transactional client.
+- Implemented a real Redis cache client (`RedisCacheClient`, ioredis-backed) alongside the existing in-memory cache, and a real BullMQ queue client (`BullMQQueueClient`) alongside the existing in-memory queue.
+- Implemented `DatabaseHealthCheck` (`SELECT 1`) and `RedisHealthCheck` (`PING`).
+- Added a dependency-injection composition root (`INFRA_TOKENS`, `registerInfrastructure`, `createInfrastructureContainer`) that registers config, logger, Prisma client, Redis connection, all four repositories, the unit of work, cache client, and health checker as singletons on the existing generic `Container`.
+- Rewrote `packages/infrastructure/src/config/env.ts` to match the variables documented in `specification/18-Configuration-Reference.md.txt` exactly (`REDIS_HOST`/`PORT`/`PASSWORD`/`DB`, `QUEUE_PREFIX`/`CONCURRENCY`/`RETRY`/`TIMEOUT`, `DATABASE_POOL`/`TIMEOUT`/`LOGGING`) instead of the previous ad hoc `REDIS_URL`/`QUEUE_NAME` shape; updated `.env.example` to match.
+- Added 35 unit tests (`node --test`) covering mappers, repositories (against a fake Prisma client), the unit of work, the DI container/composition root, the in-memory cache/queue, and the health checks. `BullMQQueueClient` is intentionally left to integration testing (owns real `bullmq` Queue/Worker instances; requires live Redis).
+- Wired a `test` task into `turbo.json`, a `test`/`db:generate` script into the root `package.json`, and a Prisma-generate + test step into the GitHub Actions CI workflow.
+- Fixed a repo-wide ESLint bug: the core `no-unused-vars` rule (from `js.configs.recommended`) was flagging TypeScript-only constructs (interface method parameters, constructor parameter properties) as unused across every package; it is now disabled in favor of `@typescript-eslint/no-unused-vars` only. This was latent before because no package other than the new infrastructure work exercised `pnpm lint` against files using those constructs.
+- Fixed `packages/infrastructure/tsconfig.json`: it previously path-mapped `@ctv-platform/domain` straight to the domain package's `src`, which violated `rootDir` and had apparently never been typechecked. It now uses a standard TypeScript project reference to `../domain` and resolves the package normally through the workspace symlink and the domain package's built `dist`.
+- Added `.prettierignore` and fixed `.gitignore` (added `dist` and `*.tsbuildinfo`); removed previously-committed `tsconfig.tsbuildinfo` build-cache files from git tracking.
+- Removed a stray debris file (`how --stat HEAD --oneline`, an accidental shell-redirect of a git diff) that was staged before this session began.
+
+Architectural decisions validated:
+- `packages/infrastructure` (not `packages/database`) is the home for Prisma, repositories, caching, queueing, DI, and logging for this project, continuing the precedent already set by the partial Milestone 2 work found at the start of this session. `packages/database`/`config`/`logger` remain empty placeholders.
+- The domain's repository interfaces (`save`/`findById`/`findByTmdbId`/`list`, etc.) are intentionally narrower than the Prisma schema (e.g. `Movie` does not carry `tmdbId` on the aggregate itself). This is treated as an accepted Milestone 1 design decision, not something to fix in Milestone 2.
+
+Known gaps / accepted limitations (documented, not hidden):
+- `Episode` has no `status` column in the schema; `EpisodeMapper` always reports `published` on read and never persists a status. Documented in the mapper and the package README.
+- `BullMQQueueClient`, `RedisCacheClient` in the DI graph, and both health checks are only exercised against fakes/duck-typed doubles in this session's environment, since no live PostgreSQL or Redis was available (no Docker). They compile, typecheck, and are wired correctly; real connectivity should be verified against the `docker-compose.yml` stack before relying on them in an environment with live services.
+- `packages/domain` still has pre-existing Prettier formatting deviations (2-space vs. the spec's stated 4-space convention is actually followed correctly; the deviations are pre-existing files never run through `format:check`). Left untouched as out of scope for Milestone 2; only the one domain file touched this milestone (`entities/content.ts`) was reformatted.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace.
+
+Next recommended actions:
+- Begin Milestone 3 (Provider Framework): Provider SDK, Provider Registry, Provider Health, Provider Config, Provider Discovery, Retry Policy.
+- When real Postgres/Redis are available, run an integration pass against the `docker-compose.yml` stack (`prisma migrate dev`, `BullMQQueueClient`, `RedisCacheClient`, both health checks) before Milestone 3 relies on them.
 
 ---
 

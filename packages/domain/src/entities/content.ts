@@ -1,5 +1,6 @@
 import { AggregateRoot } from '../base.js';
-import { ContentPublishedEvent, ContentRemovedEvent, DomainEvent } from '../events.js';
+import type { DomainEvent } from '../events.js';
+import { ContentPublishedEvent, ContentRemovedEvent } from '../events.js';
 import { ValidationError } from '../errors.js';
 import { Duration, Rating, Title, UrlValue } from '../value-objects.js';
 import type { MediaCategory, MediaStatus, TimestampedEntity } from '../types.js';
@@ -16,7 +17,7 @@ export abstract class ContentEntity extends AggregateRoot<string> implements Tim
     protected _status: MediaStatus,
     protected _createdAt: Date,
     protected _updatedAt: Date,
-    protected _events: DomainEvent[] = []
+    protected _events: DomainEvent[] = [],
   ) {
     super(id);
   }
@@ -86,7 +87,7 @@ export class Movie extends ContentEntity {
     private _runtime: Duration | null,
     private _rating: Rating | null,
     private _trailerUrl: UrlValue | null,
-    events: DomainEvent[] = []
+    events: DomainEvent[] = [],
   ) {
     super(id, 'movie', title, overview, status, createdAt, updatedAt, events);
   }
@@ -100,12 +101,29 @@ export class Movie extends ContentEntity {
     trailerUrl?: string | null;
   }): Movie {
     const title = Title.create(props.title);
-    const runtime = props.runtimeMinutes === null || props.runtimeMinutes === undefined ? null : Duration.create(props.runtimeMinutes);
-    const rating = props.rating === null || props.rating === undefined ? null : Rating.create(props.rating);
-    const trailerUrl = props.trailerUrl === null || props.trailerUrl === undefined ? null : UrlValue.create(props.trailerUrl);
+    const runtime =
+      props.runtimeMinutes === null || props.runtimeMinutes === undefined
+        ? null
+        : Duration.create(props.runtimeMinutes);
+    const rating =
+      props.rating === null || props.rating === undefined ? null : Rating.create(props.rating);
+    const trailerUrl =
+      props.trailerUrl === null || props.trailerUrl === undefined
+        ? null
+        : UrlValue.create(props.trailerUrl);
 
     const now = new Date();
-    return new Movie(props.id, title, props.overview ?? null, 'draft', now, now, runtime, rating, trailerUrl);
+    return new Movie(
+      props.id,
+      title,
+      props.overview ?? null,
+      'draft',
+      now,
+      now,
+      runtime,
+      rating,
+      trailerUrl,
+    );
   }
 
   get runtime(): Duration | null {
@@ -120,7 +138,46 @@ export class Movie extends ContentEntity {
     return this._trailerUrl;
   }
 
-  updateMetadata(input: { title?: string; overview?: string | null; runtimeMinutes?: number | null; rating?: number | null; trailerUrl?: string | null }): void {
+  /**
+   * Rehydrates a Movie from persisted state without re-running creation invariants
+   * (status/timestamps are preserved as stored). Intended for repository mapping only.
+   */
+  static reconstitute(props: {
+    id: string;
+    title: string;
+    overview: string | null;
+    status: MediaStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    runtimeMinutes: number | null;
+    rating: number | null;
+    trailerUrl: string | null;
+  }): Movie {
+    const title = Title.create(props.title);
+    const runtime = props.runtimeMinutes === null ? null : Duration.create(props.runtimeMinutes);
+    const rating = props.rating === null ? null : Rating.create(props.rating);
+    const trailerUrl = props.trailerUrl === null ? null : UrlValue.create(props.trailerUrl);
+
+    return new Movie(
+      props.id,
+      title,
+      props.overview,
+      props.status,
+      props.createdAt,
+      props.updatedAt,
+      runtime,
+      rating,
+      trailerUrl,
+    );
+  }
+
+  updateMetadata(input: {
+    title?: string;
+    overview?: string | null;
+    runtimeMinutes?: number | null;
+    rating?: number | null;
+    trailerUrl?: string | null;
+  }): void {
     if (input.title !== undefined) {
       this._title = Title.create(input.title);
     }
@@ -153,7 +210,7 @@ export class TVShow extends ContentEntity {
     updatedAt: Date,
     private _seasonCount: number,
     private _episodeCount: number,
-    events: DomainEvent[] = []
+    events: DomainEvent[] = [],
   ) {
     super(id, 'show', title, overview, status, createdAt, updatedAt, events);
   }
@@ -170,6 +227,33 @@ export class TVShow extends ContentEntity {
 
   get episodeCount(): number {
     return this._episodeCount;
+  }
+
+  /**
+   * Rehydrates a TVShow from persisted state without re-running creation invariants.
+   * Intended for repository mapping only.
+   */
+  static reconstitute(props: {
+    id: string;
+    title: string;
+    overview: string | null;
+    status: MediaStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    seasonCount: number;
+    episodeCount: number;
+  }): TVShow {
+    const title = Title.create(props.title);
+    return new TVShow(
+      props.id,
+      title,
+      props.overview,
+      props.status,
+      props.createdAt,
+      props.updatedAt,
+      props.seasonCount,
+      props.episodeCount,
+    );
   }
 
   updateCounts(seasonCount: number, episodeCount: number): void {
@@ -197,18 +281,34 @@ export class Season extends AggregateRoot<string> {
     private _overview: string | null,
     private _episodeCount: number,
     readonly createdAt: Date,
-    private _updatedAt: Date
+    private _updatedAt: Date,
   ) {
     super(id);
   }
 
-  static create(props: { id: string; showId: string; seasonNumber: number; title?: string | null; overview?: string | null }): Season {
+  static create(props: {
+    id: string;
+    showId: string;
+    seasonNumber: number;
+    title?: string | null;
+    overview?: string | null;
+  }): Season {
     if (!Number.isInteger(props.seasonNumber) || props.seasonNumber < 1) {
       throw new ValidationError('Season number must be a positive integer.');
     }
-    const title = props.title === undefined || props.title === null ? null : Title.create(props.title);
+    const title =
+      props.title === undefined || props.title === null ? null : Title.create(props.title);
     const now = new Date();
-    return new Season(props.id, props.showId, props.seasonNumber, title, props.overview ?? null, 0, now, now);
+    return new Season(
+      props.id,
+      props.showId,
+      props.seasonNumber,
+      title,
+      props.overview ?? null,
+      0,
+      now,
+      now,
+    );
   }
 
   get seasonNumber(): number {
@@ -231,7 +331,38 @@ export class Season extends AggregateRoot<string> {
     return this._updatedAt;
   }
 
-  updateMetadata(input: { title?: string | null; overview?: string | null; episodeCount?: number }): void {
+  /**
+   * Rehydrates a Season from persisted state without re-running creation invariants.
+   * Intended for repository mapping only.
+   */
+  static reconstitute(props: {
+    id: string;
+    showId: string;
+    seasonNumber: number;
+    title: string | null;
+    overview: string | null;
+    episodeCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Season {
+    const title = props.title === null ? null : Title.create(props.title);
+    return new Season(
+      props.id,
+      props.showId,
+      props.seasonNumber,
+      title,
+      props.overview,
+      props.episodeCount,
+      props.createdAt,
+      props.updatedAt,
+    );
+  }
+
+  updateMetadata(input: {
+    title?: string | null;
+    overview?: string | null;
+    episodeCount?: number;
+  }): void {
     if (input.title !== undefined) {
       this._title = input.title === null ? null : Title.create(input.title);
     }
@@ -262,19 +393,39 @@ export class Episode extends ContentEntity {
     private _seasonId: string,
     private _episodeNumber: number,
     private _runtime: Duration | null,
-    events: DomainEvent[] = []
+    events: DomainEvent[] = [],
   ) {
     super(id, 'episode', title, overview, status, createdAt, updatedAt, events);
   }
 
-  static create(props: { id: string; seasonId: string; episodeNumber: number; title: string; overview?: string | null; runtimeMinutes?: number | null }): Episode {
+  static create(props: {
+    id: string;
+    seasonId: string;
+    episodeNumber: number;
+    title: string;
+    overview?: string | null;
+    runtimeMinutes?: number | null;
+  }): Episode {
     if (!Number.isInteger(props.episodeNumber) || props.episodeNumber < 1) {
       throw new ValidationError('Episode number must be a positive integer.');
     }
     const title = Title.create(props.title);
-    const runtime = props.runtimeMinutes === null || props.runtimeMinutes === undefined ? null : Duration.create(props.runtimeMinutes);
+    const runtime =
+      props.runtimeMinutes === null || props.runtimeMinutes === undefined
+        ? null
+        : Duration.create(props.runtimeMinutes);
     const now = new Date();
-    return new Episode(props.id, title, props.overview ?? null, 'draft', now, now, props.seasonId, props.episodeNumber, runtime);
+    return new Episode(
+      props.id,
+      title,
+      props.overview ?? null,
+      'draft',
+      now,
+      now,
+      props.seasonId,
+      props.episodeNumber,
+      runtime,
+    );
   }
 
   get seasonId(): string {
@@ -287,5 +438,35 @@ export class Episode extends ContentEntity {
 
   get runtime(): Duration | null {
     return this._runtime;
+  }
+
+  /**
+   * Rehydrates an Episode from persisted state without re-running creation invariants.
+   * Intended for repository mapping only.
+   */
+  static reconstitute(props: {
+    id: string;
+    seasonId: string;
+    episodeNumber: number;
+    title: string;
+    overview: string | null;
+    status: MediaStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    runtimeMinutes: number | null;
+  }): Episode {
+    const title = Title.create(props.title);
+    const runtime = props.runtimeMinutes === null ? null : Duration.create(props.runtimeMinutes);
+    return new Episode(
+      props.id,
+      title,
+      props.overview,
+      props.status,
+      props.createdAt,
+      props.updatedAt,
+      props.seasonId,
+      props.episodeNumber,
+      runtime,
+    );
   }
 }

@@ -17,17 +17,20 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
     "validate:env": "node ./tools/validate-env.mjs",
     "prepare": "husky install",
-    "ci": "pnpm lint && pnpm typecheck && pnpm build"
+    "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test"
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
+    "@prisma/client": "^5.22.0",
     "@types/node": "^22.10.1",
     "@typescript-eslint/eslint-plugin": "^8.13.0",
     "@typescript-eslint/parser": "^8.13.0",
     "eslint": "^9.14.0",
-    "prisma": "^5.9.0",
+    "prisma": "^5.22.0",
     "eslint-config-prettier": "^9.0.0",
     "globals": "^15.8.0",
     "husky": "^9.1.0",
