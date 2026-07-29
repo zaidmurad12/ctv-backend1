@@ -113,13 +113,15 @@ The following constraints must remain in effect during all future work:
 
 # Current Implementation Focus
 
-Milestones 1 (Core Domain), 2 (Infrastructure), and 3 (Provider Framework)
-are complete. The next unstarted milestone is Milestone 4 (Import Pipeline).
+Milestones 1 (Core Domain), 2 (Infrastructure), 3 (Provider Framework), and
+4 (Import Pipeline) are complete. The next unstarted milestone is Milestone
+5 (Backend API).
 
-No concrete provider (Cinemana, TMDB), import-pipeline, or client
-implementation should be introduced before Milestone 4 begins. Milestone 3
-deliberately built only the generic, reusable framework — no concrete
-provider exists yet.
+No concrete provider (Cinemana, TMDB), backend API, admin dashboard, or
+Android TV implementation should be introduced before Milestone 5 begins.
+Milestone 4 built a fully generic, provider-agnostic ingestion pipeline —
+still no concrete provider exists; the pipeline is exercised entirely
+against fakes/injected doubles implementing `ProviderInterface`.
 
 ---
 
@@ -235,6 +237,43 @@ Tests and verification completed:
 
 Next recommended actions:
 - Begin Milestone 4 (Import Pipeline): Discovery, Metadata, Streams, Subtitles, Matching, Validation, Publishing — the first place a concrete Cinemana provider (and likely TMDB) will be implemented against this framework and registered into a real `ProviderRegistry`.
+
+## Milestone 4 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `services/importer` / `@ctv-platform/importer`, added to `pnpm-workspace.yaml`'s `services/*` glob per `specification/02-Folder-Structure.md.txt`):
+
+- **Discovery**: `DiscoveryEngine` runs Incremental (one page of "what's new" categories), Full (every category, fully paginated), Scheduled (same as Incremental, triggered on a timer), and Manual (same as Full, triggered on demand) discovery against any `ProviderInterface`, deduplicating items and tracking a per-provider checkpoint (`InMemoryDiscoveryCheckpointStore`, process-lifetime — see Known Gaps).
+- **Import Pipeline**: `MovieImportOrchestrator` and `ShowImportOrchestrator` (dispatched by `ImportOrchestrator`) run the full per-item pipeline from `specification/08-Import-Pipeline.md.txt`: fetch -> duplicate check -> TMDB-style match -> metadata enrichment -> merge -> validate -> publish -> import media. `DiscoveryWorker`/`ImportWorker` consume two real queues (`ImportQueues`, built on `@ctv-platform/infrastructure`'s `QueueClient`) — Discovery Queue and Import Queue. `processInBatches` is a concurrency-limited worker-pool batch processor; `ProgressTracker` reports started/finished/stage/percentage.
+- **Matching**: `ContentMatcher` implements the full priority chain from `specification/07-TMDB-Integration.md.txt` (IMDb id -> TMDB id -> exact original title+year -> exact title+year -> normalized Arabic title+year -> fuzzy match, a from-scratch Levenshtein-based similarity, threshold configurable). `MovieDuplicateDetector`/`ShowDuplicateDetector` answer a *different* question — whether this provider's content already exists in our DB, primarily via the `MovieProvider`/`TVShowProvider` join row (the schema's actual "Provider ID: Unique" duplicate-protection key), with TMDB id as a secondary cross-provider safety net. `CanonicalMovieResolver`/`CanonicalShowResolver` resolve to the canonical domain aggregate (existing or newly created, unsaved).
+- **Metadata**: `MetadataEnricher` searches every registered `METADATA_ENRICHMENT`-capability provider and applies the same `ContentMatcher` to find the right entry before downloading full details. `mergeMovieMetadata`/`mergeShowMetadata` apply the "TMDB -> Provider" precedence for overview/artwork while leaving availability/streams/subtitles untouched (content-provider-owned, per spec). `validateMovieMetadata`/`validateShowMetadata` reuse the domain's own `Title`/`UrlValue` value-object validation rather than re-implementing it. `metadataNormalizer.ts` implements real Arabic text normalization (diacritics/tatweel stripping, alef/yaa/taa-marbuta unification).
+- **Media**: `StreamImporter`/`SubtitleImporter`/`ArtworkImporter` validate then persist via new local Prisma-backed repositories (see Persistence below). `imageProcessor.ts` validates and selects artwork URLs (no pixel processing — that's Milestone 8/Sharp).
+- **Validation**: `validateStream`/`validateSubtitle`/`validateMovieForPublish`/`validateShowForPublish`/`validateEpisodeForPublish` implement the exact rules from `specification/08-Import-Pipeline.md.txt` ("Validation Rules"), including "at least one valid stream" as a publish gate for movies/episodes.
+- **Publishing**: `CatalogPublisher` reuses the domain's own `ContentDomainService.publishIfEligible`/`removeIfEligible` (Milestone 1) rather than re-implementing publish rules, then links the aggregate to its provider. `CacheInvalidator` reuses `CacheClient` (Milestone 2). `EventPublisher` reuses `EventBus`/`DomainEventDispatcher` (Milestone 1) to drain and dispatch an entity's pending domain events. `SearchIndexUpdater` publishes a real `ContentIndexUpdateRequestedEvent` via the same event bus — there is no search infrastructure yet (Milestone 8 scope), so this is honest working code for what the milestone can deliver, not a stand-in.
+- **Operations**: `JobRetryPolicy` implements the job-level retry table from `specification/08-Import-Pipeline.md.txt` (timeout/network/rate-limit/provider/authentication retry with backoff; validation errors stop immediately). `DeadLetterQueue` holds exhausted/non-retryable jobs for inspection. `ImportMetrics` tracks the metrics named in the spec (imported movies/shows/episodes/streams/subtitles, failed, retried, average import time). `ImportLogger` enforces the required structured log fields (Import Job ID, Provider, Content Id, Stage, Duration, Status, Error) on top of `Logger` reused directly from `@ctv-platform/infrastructure`.
+- **Persistence (new, local to this package)**: `Provider`, `MovieProvider`/`TVShowProvider`/`EpisodeProvider`, `Stream`, `Subtitle`, and `Image` were never modeled as domain aggregates or given repositories in Milestone 1/2 (out of that scope). `services/importer/src/persistence/` defines local ports and Prisma-backed adapters for them, following Milestone 2's exact mapper/repository conventions, so that neither `packages/domain` nor `packages/infrastructure` needed to change. Two schema-driven decisions: streams reconcile by `streamUrl` (no provider-side stream id column exists) and mark disappeared ones `isActive: false` rather than deleting; subtitles have no `isActive` column at all, so there is no deactivation concept for them.
+- 118 unit/integration/pipeline tests (`node --test`), all against fakes/injected doubles (fake `ProviderInterface`, fake domain repositories, a fake Prisma client mirroring the infrastructure package's own test style, `InMemoryQueueClient` from `@ctv-platform/infrastructure`, injectable clocks/delays) — no network calls, no real database, per the project's testing rules. Includes true end-to-end pipeline tests (`orchestrator.movieImportOrchestrator.test.mjs`, `orchestrator.showImportOrchestrator.test.mjs`) exercising fetch -> match -> enrich -> validate -> publish -> media-import together.
+- `services/importer/README.md` documenting the package, including every scope boundary below.
+
+Architectural decisions validated:
+- `@ctv-platform/importer` depends on `@ctv-platform/domain`, `@ctv-platform/infrastructure`, and `@ctv-platform/sdk` — it is the Application Layer (per Architecture Decision 2), sitting above all three, unlike `packages/infrastructure` and `packages/sdk` which each depend on domain only.
+- Duplicate detection (does this item already exist in our DB) and TMDB-style matching (which metadata-provider entry corresponds to this content) are different questions answered by different mechanisms — conflating them was an early design mistake caught and corrected during this milestone's implementation.
+- `packages/domain`, `packages/infrastructure`, and `packages/sdk` (Milestones 1–3) were **not modified** — confirmed via `git diff --stat`, changes are confined to `pnpm-workspace.yaml` (additive `services/*` glob) and `services/importer/`.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- **Cast/crew/companies/countries/languages/collections** import (`specification/07-TMDB-Integration.md.txt`) requires domain aggregates Milestone 1 never modeled (`Person`, `Company`, `Genre`, `Collection`). Out of scope; only fields the `Movie`/`TVShow`/`Episode` aggregates can actually hold (title, overview, rating, runtime, trailer, artwork) are enriched.
+- `ProviderMovieDto` (Milestone 3) has no rating/runtime/trailer fields — a DTO gap when applied to a metadata-enrichment provider. These flow through the same `raw` passthrough convention already used for `imdbId`/`tmdbId`.
+- **Queue topology**: the specification names nine queues (Discovery, Movie, TV, Stream, Subtitle, TMDB, Artwork, Validation, Search). This implementation runs two real queues (Discovery, Import); every stage after discovery runs in-process within a single import job. Fanning out into the full nine-queue topology is a scaling optimization for Milestone 8, not a functional requirement.
+- **Discovery checkpoints** are process-lifetime (in-memory); a durable adapter (e.g. backed by the `Setting` table) is reasonable future work requiring a new repository, out of scope for the reason above.
+- **Image processing** validates/selects artwork URLs only; pixel-level resize/compress/convert (Sharp) is Milestone 8 scope.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer = 197 tests).
+
+Next recommended actions:
+- Begin Milestone 5 (Backend API): Authentication, Search, Catalog, Favorites, Watch History, Continue Watching, Admin APIs — the first consumer of the domain repositories and (eventually) the importer's published content over a real REST surface.
+- When a concrete Cinemana provider is eventually built (implementing `ProviderInterface` from `@ctv-platform/sdk`), register it into a real `ProviderRegistry` and wire `services/importer`'s queues/workers/scheduler into an actual running process (currently only exercised via tests).
 
 ---
 

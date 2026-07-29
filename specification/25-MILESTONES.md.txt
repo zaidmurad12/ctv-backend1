@@ -136,7 +136,7 @@ usage.
 ## Import Pipeline
 
 Status:
-⬜ Not Started
+✅ Completed
 
 Objective:
 
@@ -155,6 +155,21 @@ Scope:
 Deliverables:
 
 ✓ Full synchronization pipeline
+
+Implemented in `services/importer` (`@ctv-platform/importer`), a new
+workspace member under the `services/*` glob: a production-ready,
+provider-agnostic ingestion pipeline built entirely on
+`ProviderInterface`/`ProviderRegistry` from Milestone 3 — discovery
+(incremental/full/scheduled/manual), the full TMDB-style matching chain,
+duplicate detection via provider links, metadata enrichment/merge/
+normalization, stream/subtitle/artwork import, validation, and publishing
+(catalog update, cache invalidation, event publishing, search-index-update
+request). Discovery/Import queues, workers, a scheduler, job retry policy,
+a dead letter queue, and metrics round out the operational side. No
+concrete provider (Cinemana/TMDB) exists yet — see
+`specification/24-AI-Memory.md.txt` (Milestone 4 Update) for the full
+deliverable list and documented scope boundaries, and
+`services/importer/README.md` for usage.
 
 ---
 
@@ -357,7 +372,7 @@ Status = In Progress
 | 1 | ✅ Completed |
 | 2 | ✅ Completed |
 | 3 | ✅ Completed |
-| 4 | ⬜ Not Started |
+| 4 | ✅ Completed |
 | 5 | ⬜ Not Started |
 | 6 | ⬜ Not Started |
 | 7 | ⬜ Not Started |
