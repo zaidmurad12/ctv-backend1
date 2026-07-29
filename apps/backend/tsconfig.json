@@ -3,8 +3,17 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "composite": true
+    "declaration": true,
+    "declarationMap": true,
+    "composite": false,
+    "moduleResolution": "NodeNext",
+    "module": "NodeNext",
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
   },
+  "references": [{ "path": "../../packages/domain" }],
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

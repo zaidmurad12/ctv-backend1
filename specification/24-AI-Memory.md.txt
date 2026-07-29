@@ -113,15 +113,21 @@ The following constraints must remain in effect during all future work:
 
 # Current Implementation Focus
 
-Milestones 1 (Core Domain), 2 (Infrastructure), 3 (Provider Framework), and
-4 (Import Pipeline) are complete. The next unstarted milestone is Milestone
-5 (Backend API).
+Milestones 1 (Core Domain), 2 (Infrastructure), 3 (Provider Framework),
+4 (Import Pipeline), and 5 (Backend API) are complete. The next unstarted
+milestone is Milestone 6 (Admin Dashboard).
 
-No concrete provider (Cinemana, TMDB), backend API, admin dashboard, or
-Android TV implementation should be introduced before Milestone 5 begins.
-Milestone 4 built a fully generic, provider-agnostic ingestion pipeline —
-still no concrete provider exists; the pipeline is exercised entirely
-against fakes/injected doubles implementing `ProviderInterface`.
+No concrete provider (Cinemana, TMDB), admin dashboard, or Android TV
+implementation should be introduced before Milestone 6 begins. A fully
+functional Cinemana provider was explicitly evaluated before Milestone 5
+began and confirmed to require unauthorized reverse-engineering (no
+authorized endpoint, no browser-automation tooling, only a placeholder
+`CINEMANA_BASE_URL` in `.env.example`) — the user directed that Cinemana be
+skipped entirely and Milestone 5 proceed without it. This constraint
+remains in force: **no Cinemana or other unauthorized provider integration
+should ever be built.** Milestone 5's backend API is exercised entirely
+against fakes/injected doubles and the still-empty `ProviderRegistry`; its
+Admin "providers" endpoints correctly return empty lists as a result.
 
 ---
 
@@ -274,6 +280,44 @@ Tests and verification completed:
 Next recommended actions:
 - Begin Milestone 5 (Backend API): Authentication, Search, Catalog, Favorites, Watch History, Continue Watching, Admin APIs — the first consumer of the domain repositories and (eventually) the importer's published content over a real REST surface.
 - When a concrete Cinemana provider is eventually built (implementing `ProviderInterface` from `@ctv-platform/sdk`), register it into a real `ProviderRegistry` and wire `services/importer`'s queues/workers/scheduler into an actual running process (currently only exercised via tests).
+
+## Milestone 5 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `apps/backend` / `@ctv-platform/backend`, a NestJS application):
+
+- **Authentication**: `AuthController`/`AuthUseCases` implement register/login/refresh/logout/profile per `specification/09-Backend-API.md.txt` and `specification/12-Security.md.txt`. Access tokens are short-lived JWTs (`@nestjs/jwt`, HS256); refresh tokens are opaque random values, SHA-256-hashed at rest, and rotated on every use (`RefreshTokenRepository.revoke` + reissue) so a stolen refresh token cannot be replayed after its first legitimate use. `BcryptPasswordHasher` (12 salt rounds, configurable) and `JwtTokenService` are bound behind `PasswordHasher`/`TokenService` interface tokens (`@Inject`), not concrete classes, so they can be swapped without touching use cases.
+- **RBAC**: `RolesGuard` + `@Roles()` decorator enforce ADMIN/EDITOR/VIEWER (matching the Prisma `UserRoleEnum`) at the controller/route level; `JwtAuthGuard` is registered as a global guard with a `@Public()` escape hatch for unauthenticated routes (register/login/refresh/health).
+- **User management**: `UsersController` (self profile update, password change) and `AdminController`'s user endpoints (list/update role/deactivate) — both depend on the same `UserRepository` port as Auth, no duplicate persistence path.
+- **Catalog API**: `MoviesController`/`ShowsController`/`SeasonsController`/`EpisodesController`, backed by new local, read-only **query repositories** (`MovieQueryRepository`, `ShowQueryRepository`, `SeasonEpisodeQueryRepository`) built directly in `apps/backend` — Milestone 1's domain repositories are write-oriented and too narrow for flexible pagination/sort/filter, so rather than widening them (out of scope per "do not modify completed milestones unless absolutely necessary"), this milestone follows Milestone 4's precedent of building a local, additive read layer. These repositories map `Image` rows to artwork DTOs (`mapImagesToArtwork()`), reusing Milestone 4's finding that artwork lives in the `Image` table, never in `Movie.poster`/`backdrop` (which the import pipeline never populates).
+- **Search API**: `SearchController`/`SearchUseCases`/`SearchQueryRepository` — searches published movies/shows by title (with a `SuggestQueryDto` typeahead endpoint), same query-repository pattern as Catalog.
+- **Favorites, Watch History, Continue Watching**: each is a small, self-contained module (controller + use case + Prisma-backed repository) modeling concepts Milestone 1's domain never covered (`Favorite`, `WatchHistory`, `ContinueWatching` are Prisma-only tables), following the same "local domain modeling" precedent established for `Stream`/`Subtitle`/`Image`/`Provider` links in Milestone 4.
+- **Admin APIs**: user management (above), dashboard statistics (`DashboardStatsRepository` — catalog/user counts), and provider inspection (`ProvidersUseCases` wired to a shared, intentionally-empty `ProvidersRuntime` built from the SDK/importer's `ProviderRegistry` + `DiscoveryEngine` + `ProviderLifecycleManager` — correctly returns empty lists/health since no concrete provider is registered, consistent with the Cinemana decision above).
+- **Health**: `HealthController` reports database/Redis health, version, and uptime, reusing `DatabaseHealthCheck`/`RedisHealthCheck` from `@ctv-platform/infrastructure`.
+- **Cross-cutting**: global `ValidationPipe` (whitelist, transform, forbid-non-whitelisted) backed by class-validator DTOs on every endpoint; `AllExceptionsFilter` maps domain errors (`NotFoundError`, `ConflictError`, `ValidationError`, etc. from `@ctv-platform/domain`) and Nest's own HTTP exceptions to the standard `{success:false, error:{code,message,details}}` envelope; `ResponseInterceptor` wraps every successful response in `{success:true, data, meta}`; `@nestjs/throttler` rate limits per spec (e.g. 10/min auth, 120/min movies); `helmet` security headers; Swagger/OpenAPI served at `/api/v1/docs` via `@nestjs/swagger`.
+- Schema change: added an additive `RefreshToken` Prisma model (+ back-relation on `User`) — the one necessary, justified change to a prior milestone's schema, needed for secure token revocation/rotation; no existing model or column was altered.
+- 33 unit tests (use cases against fake repositories) + 6 integration tests (supertest against a real Nest app built via `Test.createTestingModule`, with only `PrismaService`/`USER_REPOSITORY`/`REFRESH_TOKEN_REPOSITORY`/`FavoriteRepository` overridden — every other provider, guard, pipe, and filter runs for real), all via `node --test`, consistent with every prior milestone's testing approach.
+- `apps/backend/README.md` documenting the API surface and how to run it.
+
+Architectural decisions validated:
+- `apps/backend` depends on `@ctv-platform/domain`, `@ctv-platform/infrastructure`, `@ctv-platform/sdk`, and `@ctv-platform/importer` — every API route reaches persistence and business rules only through a use case, never directly through Prisma, matching Clean Architecture's dependency rule.
+- `packages/domain`, `packages/infrastructure`, `packages/sdk`, and `services/importer` (Milestones 1–4) were **not modified**, aside from the single additive `RefreshToken` schema change described above.
+- A fully functional Cinemana provider was evaluated and confirmed to require unauthorized reverse-engineering before this milestone began; per explicit user direction, it was skipped and Milestone 5 proceeded without any concrete provider integration. This is a durable constraint, not a one-off decision for this milestone.
+
+**Important gotcha discovered and fixed (worth remembering for any future ESLint config change in `apps/backend`)**: the repo-wide `@typescript-eslint/consistent-type-imports` rule is fundamentally incompatible with NestJS's implicit (non-`@Inject`) dependency injection and with class-validator/class-transformer DTO binding. Both mechanisms rely on TypeScript's `emitDecoratorMetadata` capturing the *real* class reference at runtime — for constructor parameters (to resolve which provider to inject) and for `@Body()`/`@Query()` parameters (so `ValidationPipe` knows which DTO class to `plainToInstance()` into before applying `whitelist`/`transform`). An `import type` erases the class from the emitted JavaScript, degrading the reflected type to `Object`/`Function` and silently breaking both: DI throws `UnknownDependenciesException` at bootstrap, while broken DTO binding does not throw — it silently makes `ValidationPipe`'s whitelist strip every property, producing a confusing 400 ("property X should not exist") instead of a crash. This was triggered by running `eslint --fix` for the rule's ~30 auto-fixable violations across the package. The fix was **not** to individually flag each import, but to disable `@typescript-eslint/consistent-type-imports` for `apps/backend/**/*.ts` entirely in the root `eslint.config.mjs` (with a comment explaining why), since the rule cannot distinguish "type used only in a type position" from "type used only in a type position but the class reference must still exist at runtime for reflection." Any future NestJS backend work must keep concrete, non-`@Inject`-token classes (and any class used as a `@Body()`/`@Query()` DTO type) as regular value imports, never `import type` — interfaces bound via `@Inject(TOKEN)` and types used purely as return-type annotations remain safe as `import type`.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana or TMDB) exists or is wired in — the Admin "providers" endpoints correctly report an empty registry. This is a durable, explicitly authorized scope boundary, not an oversight.
+- Genres, Collections, People (cast/crew), Recommendations, Settings management, Metrics/analytics endpoints, and the full 9-queue Sync API surface named in parts of the wider spec set are **not** implemented — none of these have a domain aggregate or repository (Milestone 1 never modeled `Person`/`Company`/`Genre`/`Collection`, consistent with the same gap already documented in the Milestone 4 Update), and building them would require modifying completed milestones, which was out of scope per this milestone's explicit constraints.
+- Search is a straightforward title/description match against Postgres via Prisma (no dedicated search infrastructure — e.g. Elasticsearch/Meilisearch — exists yet); full-text search tuning is Milestone 8 (Optimization) scope.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer + 33 backend unit + 6 backend integration = 236 tests).
+
+Next recommended actions:
+- Begin Milestone 6 (Admin Dashboard): Dashboard, Jobs, Providers, Monitoring, Users, Logs, Settings — the first consumer of Milestone 5's Admin APIs over a real UI.
+- When a concrete Cinemana provider is eventually built and authorized, register it into the shared `ProviderRegistry` so Milestone 5's Admin "providers" endpoints and dashboard statistics reflect real data instead of an empty registry.
 
 ---
 

@@ -178,7 +178,7 @@ deliverable list and documented scope boundaries, and
 ## Backend API
 
 Status:
-⬜ Not Started
+✅ Completed
 
 Objective:
 
@@ -197,6 +197,23 @@ Scope:
 Deliverables:
 
 ✓ Production REST API
+
+Implemented in `apps/backend` (`@ctv-platform/backend`), a new NestJS
+workspace member: JWT access/refresh authentication with rotation and
+revocation, role-based authorization (ADMIN/EDITOR/VIEWER), user profile
+management, a read-oriented Catalog API (movies/shows/seasons/episodes) and
+Search API built on new local query repositories, Favorites/Watch History/
+Continue Watching, and Admin APIs (user management, dashboard statistics,
+provider registry inspection). Every endpoint is DTO-validated
+(class-validator), documented via Swagger/OpenAPI at `/api/v1/docs`, and
+returns the standard `{success, data, meta}` / `{success, error}` envelope.
+Depends only on the existing Domain, Infrastructure, SDK, and Import
+Pipeline — no concrete provider (Cinemana/TMDB) was implemented or wired in,
+per an explicit decision to skip unauthorized reverse-engineering of
+Cinemana (see `specification/24-AI-Memory.md.txt`, Milestone 5 Update, for
+the full deliverable list, the DI/`import type` gotcha discovered during
+this milestone, and documented scope boundaries), and `apps/backend/README.md`
+for usage.
 
 ---
 
@@ -373,7 +390,7 @@ Status = In Progress
 | 2 | ✅ Completed |
 | 3 | ✅ Completed |
 | 4 | ✅ Completed |
-| 5 | ⬜ Not Started |
+| 5 | ✅ Completed |
 | 6 | ⬜ Not Started |
 | 7 | ⬜ Not Started |
 | 8 | ⬜ Not Started |

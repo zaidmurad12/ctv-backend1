@@ -28,5 +28,15 @@ export default [
       '@typescript-eslint/consistent-type-imports': 'error',
     },
   },
+  {
+    // NestJS resolves constructor-injected classes via emitDecoratorMetadata,
+    // which needs the real class reference at runtime. This rule can't tell
+    // that from a "type position only" import, so `import type` would erase
+    // the class and break dependency injection.
+    files: ['apps/backend/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': 'off',
+    },
+  },
   prettier,
 ];

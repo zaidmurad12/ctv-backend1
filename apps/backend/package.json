@@ -2,14 +2,49 @@
   "name": "@ctv-platform/backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
   "scripts": {
-    "dev": "node -e \"console.log('backend scaffold ready')\"",
+    "dev": "tsc -p tsconfig.json --watch",
+    "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "lint": "eslint src tests --ext .ts",
+    "lint:fix": "eslint src tests --ext .ts --fix",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"tests/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "@ctv-platform/domain": "workspace:*",
+    "@ctv-platform/importer": "workspace:*",
+    "@ctv-platform/infrastructure": "workspace:*",
+    "@ctv-platform/sdk": "workspace:*",
+    "@nestjs/common": "^10.4.6",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.6",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.4.6",
+    "@nestjs/swagger": "^7.4.2",
+    "@nestjs/throttler": "^6.2.1",
+    "@prisma/client": "^5.22.0",
+    "bcrypt": "^5.1.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "express": "^4.21.1",
+    "helmet": "^7.1.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@nestjs/testing": "^10.4.6",
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^4.17.21",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
     "typescript": "^5.7.2"
   }
 }

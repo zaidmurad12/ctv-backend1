@@ -484,10 +484,26 @@ model User {
   favorites     Favorite[]
   watchHistory  WatchHistory[]
   continueWatching ContinueWatching[]
+  refreshTokens RefreshToken[]
 
   @@index([email])
   @@index([username])
   @@index([isActive])
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid())
+  userId        String
+  tokenHash     String    @db.VarChar(255)
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
 }
 
 model Role {
