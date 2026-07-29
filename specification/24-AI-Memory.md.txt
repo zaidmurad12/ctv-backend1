@@ -113,11 +113,13 @@ The following constraints must remain in effect during all future work:
 
 # Current Implementation Focus
 
-Milestone 1 (Core Domain) and Milestone 2 (Infrastructure) are complete. The
-next unstarted milestone is Milestone 3 (Provider Framework).
+Milestones 1 (Core Domain), 2 (Infrastructure), and 3 (Provider Framework)
+are complete. The next unstarted milestone is Milestone 4 (Import Pipeline).
 
-No provider, application-layer, or client implementation should be introduced
-before Milestone 3 begins.
+No concrete provider (Cinemana, TMDB), import-pipeline, or client
+implementation should be introduced before Milestone 4 begins. Milestone 3
+deliberately built only the generic, reusable framework — no concrete
+provider exists yet.
 
 ---
 
@@ -197,6 +199,42 @@ Tests and verification completed:
 Next recommended actions:
 - Begin Milestone 3 (Provider Framework): Provider SDK, Provider Registry, Provider Health, Provider Config, Provider Discovery, Retry Policy.
 - When real Postgres/Redis are available, run an integration pass against the `docker-compose.yml` stack (`prisma migrate dev`, `BullMQQueueClient`, `RedisCacheClient`, both health checks) before Milestone 3 relies on them.
+
+## Milestone 3 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new `packages/sdk` package, `@ctv-platform/sdk`):
+- `ProviderInterface`: the exact contract from `specification/05-Provider-Architecture.md.txt` (`health`, `discover`, `search`, `movie`, `show`, `season`, `episode`, `streams`, `subtitles`), plus `supports(capability)` for the capability system.
+- External DTO contracts (`dto.ts`): `ProviderMovieDto`, `ProviderShowDto`, `ProviderSeasonDto`, `ProviderEpisodeDto`, `ProviderStreamDto`, `ProviderSubtitleDto`, `ProviderCatalogItemDto`, `ProviderSearchResultDto`, `ProviderArtworkDto` — the fields these carry come directly from the "must extract" lists in `specification/06-Cinemana-Reverse-Engineering.md.txt`.
+- `AbstractProvider`: a template-method base class handling capability gating, rate limiting, retries with authentication refresh, and structured logging uniformly, so a concrete provider only implements the `doHealth`/`doDiscover`/`doSearch`/`doMovie`/`doShow`/`doSeason`/`doEpisode`/`doStreams`/`doSubtitles` primitives.
+- `ProviderError` + `ProviderErrorCodeEnum` (`TIMEOUT`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `INVALID_RESPONSE`, `UNKNOWN_ERROR`, plus an SDK-level `NOT_SUPPORTED` for the capability gate) and `ProviderResult<T> = Result<T, ProviderError>`, reusing `@ctv-platform/domain`'s `Result`/`ok`/`err`/`DomainError` directly rather than re-inventing them.
+- `ProviderStatusEnum` (`HEALTHY`, `UNAVAILABLE`, `MAINTENANCE`, `DISABLED`, `AUTHENTICATION_FAILED`, `RATE_LIMITED`, `UNKNOWN`) — deliberately mirrors the Prisma `ProviderStatusEnum` in `prisma/schema.prisma` value-for-value so a future persistence mapper needs no translation table.
+- `ExponentialBackoffRetryPolicy` + `executeWithRetry`: implements the retry table from specs 05/06 (timeout/rate-limit/unauthorized/unknown retry; forbidden/not-found/invalid-response/not-supported do not), with authentication refresh triggered on `UNAUTHORIZED`.
+- `FixedWindowRateLimiter`: per-provider request throttling with an explicit cooldown gate for `RATE_LIMITED` responses (both clock and sleep are injectable for deterministic tests).
+- `AuthenticationStrategy` + `NoopAuthenticationStrategy`: authentication stays entirely inside the provider (Core/registry never manage it); the no-op strategy is a genuine, valid default for providers using a static API key rather than a login flow.
+- `ProviderRegistry`: register/resolve by id, `registerFactory` for lazy/DI-friendly construction (a provider is only ever built once, on first `resolve()`, never manually with `new`), `list()` sorted by ascending priority, `listByCapability()`.
+- `ProviderLifecycleManager`: drives Registered -> Health Check -> Available, producing a queryable `ProviderLifecycleSnapshot` (status/latency/message) per provider.
+- `createProviderConfig()` (zod-validated `ProviderConfig`: timeout, user agent, rate-limit window, retry settings) — the SDK never reads `process.env` itself; a concrete provider's own package will read its own env vars and pass the resolved values in.
+- 44 unit tests (`node --test`) covering every module above, including an end-to-end `AbstractProvider` test (via a minimal concrete `TestProvider`) exercising capability gating, retry-then-succeed, rate-limiter cooldown reporting, and authentication refresh together.
+- `packages/sdk/README.md` documenting the package.
+
+Architectural decisions validated:
+- `@ctv-platform/sdk` depends only on `@ctv-platform/domain` (for `Result`/`ok`/`err`/`DomainError`/`MediaCategory`). It does **not** depend on `@ctv-platform/infrastructure` — per Architecture Decision 2, Providers are a sibling of Infrastructure (both sit in the Infrastructure Layer), not a consumer of it, so nothing in the provider framework can reach Prisma/Redis/BullMQ even transitively.
+- The SDK defines its own minimal `ProviderLogger` port rather than importing infrastructure's `Logger`. Infrastructure's `ConsoleLogger` already satisfies this shape structurally, so no adapter is needed when a future composition root wires a concrete provider together; this avoids the wrong-direction dependency without duplicating meaningful logic (it's a 4-method interface, not an implementation).
+- `packages/domain` and `packages/infrastructure` (Milestones 1 and 2) were **not modified** in this milestone — confirmed by `git diff --stat` showing changes confined to `packages/sdk/` and the specification files.
+- "Dependency injection integration" for this milestone means the SDK's own classes are fully constructor-injected and never instantiate their dependencies internally by surprise (`ProviderRegistry.registerFactory` is the DI-friendly, lazy-construction path). Wiring a concrete provider into the app's actual `Container` (from `@ctv-platform/infrastructure`) is a composition-root concern that belongs to the milestone that introduces the first concrete provider (Cinemana), since no concrete provider exists yet to wire in.
+- Only one concrete `AbstractProvider` base class was introduced (not several). A metadata-only provider (e.g. TMDB) is expected to simply omit `STREAMS`/`SUBTITLES`/etc. from its `ProviderMetadata.capabilities`; the capability gate then rejects those calls before the provider's own `doStreams`/`doSubtitles` ever runs.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana or TMDB) exists yet — this milestone is exclusively the generic framework, matching the "Generic Provider Framework" deliverable in `specification/25-MILESTONES.md.txt`. Concrete providers are future work (Milestone 4 and/or a dedicated follow-up).
+- The provider framework is not yet wired into any DI composition root or app entry point, since there is nothing concrete to register yet.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure tests + 44 new sdk tests).
+
+Next recommended actions:
+- Begin Milestone 4 (Import Pipeline): Discovery, Metadata, Streams, Subtitles, Matching, Validation, Publishing — the first place a concrete Cinemana provider (and likely TMDB) will be implemented against this framework and registered into a real `ProviderRegistry`.
 
 ---
 

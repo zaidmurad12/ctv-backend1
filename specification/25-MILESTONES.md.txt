@@ -100,7 +100,7 @@ for usage.
 ## Provider Framework
 
 Status:
-⬜ Not Started
+✅ Completed
 
 Objective:
 
@@ -118,6 +118,16 @@ Scope:
 Deliverables:
 
 ✓ Generic Provider Framework
+
+Implemented in `packages/sdk` (`@ctv-platform/sdk`): `ProviderInterface`,
+external DTO contracts, an `AbstractProvider` base class (capability gating,
+rate limiting, retries with authentication refresh, structured logging),
+`ProviderError`/`ProviderResult`, `ProviderRegistry` (register/factory/
+resolve/discover by capability), and `ProviderLifecycleManager` (Registered
+-> Health Check -> Available). No concrete provider (Cinemana/TMDB) is part
+of this milestone — see `specification/24-AI-Memory.md.txt` (Milestone 3
+Update) for the full deliverable list, and `packages/sdk/README.md` for
+usage.
 
 ---
 
@@ -346,7 +356,7 @@ Status = In Progress
 |------------|--------|
 | 1 | ✅ Completed |
 | 2 | ✅ Completed |
-| 3 | ⬜ Not Started |
+| 3 | ✅ Completed |
 | 4 | ⬜ Not Started |
 | 5 | ⬜ Not Started |
 | 6 | ⬜ Not Started |
