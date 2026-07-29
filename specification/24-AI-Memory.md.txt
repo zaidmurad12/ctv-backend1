@@ -354,6 +354,23 @@ Next recommended actions:
 - Begin Milestone 7 (Android TV Application): Authentication, Home, Catalog, Details, Player, Search, Settings — the first consumer of the public (non-admin) parts of Milestone 5's Backend API.
 - When a concrete Cinemana provider is eventually built and authorized, and when the backend gains Settings/Audit Log/Import Job history endpoints, wire the corresponding admin pages' real calls in without any UI rework — they already call the correct typed contracts.
 
+## Post-Milestone 6 Fix: Bootstrap Administrator Seed
+
+Status: Completed
+
+A fresh database has no users at all, so nobody could sign into `apps/admin` (built in Milestone 6) or call any `/admin/*` endpoint. No seed or bootstrap-admin mechanism existed anywhere in the repo before this fix (confirmed by a full-repo search — no `seed.*` file, no `"prisma"` config in any `package.json`, no `admin@ctv`/bootstrap pattern anywhere).
+
+What was added:
+- `prisma/seed.mjs` (repo root, next to `prisma/schema.prisma` — the conventional Prisma seed location) — upserts the three fixed roles (`ADMIN`/`EDITOR`/`VIEWER`, matching `UserRoleEnum`) and one Administrator user (`admin@ctv.local` / `Admin@123`), hashed with the real `bcrypt` package at `BCRYPT_SALT_ROUNDS` (default 12) — the exact same library, algorithm, and config apps/backend's `BcryptPasswordHasher` uses, so the account logs in through the normal `/auth/login` endpoint with no seed-specific auth path. Every write is an `upsert` keyed on a unique column (`Role.name`, `User.email`), so re-running the seed is always safe.
+- Root `package.json`: added a `"prisma": { "seed": "node prisma/seed.mjs" }` field (Prisma 5.x's required explicit seed-config convention — there is no more auto-detection), a `"db:seed": "prisma db seed"` script (mirroring the existing `"db:generate"` naming), and `bcrypt` as a devDependency (needed because the seed script is invoked from the repo root, where `bcrypt` — only previously a dependency of `apps/backend` — did not resolve under pnpm's strict, non-hoisted `node_modules`).
+- `apps/backend/README.md`: a new "Database seed (bootstrap administrator)" section with exact run commands, the default credentials table, and an explicit "change this immediately outside local dev" warning, plus one line added to "Known scope boundaries" clarifying the seed is admin-bootstrap only, not general fixture data.
+
+Verification: `pnpm db:generate` succeeds. `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all still pass across the whole workspace unchanged. `pnpm prisma db seed` was actually run against a real (if credential-mismatched) Postgres server discovered listening locally on port 5432 — it correctly loaded `.env`, connected, and reached Prisma's query layer before failing on `Authentication failed ... for 'ctv'`, which is a real-database-provisioning limitation (no matching database/role exists in this sandbox), **not** a defect in the seed script — everything up to and including issuing the real SQL-backed upsert query executed correctly. This is the same category of limitation documented in Milestones 2–5 ("no live Postgres/Redis available in this sandbox"); full end-to-end verification (empty DB → seed → login via `/auth/login`) should be run once against the real `docker-compose.yml` Postgres before relying on this in a live environment.
+
+Known gaps / accepted scope boundaries:
+- The seed bootstraps auth only (roles + one admin user) — it is not a general demo-data/fixture seed for movies, shows, or any catalog content.
+- The seeded password is a well-known default and must be rotated outside local development; there is no admin-side reset-password endpoint yet (see the Milestone 6 Update's Users page note — `resetPassword` is a typed stub against an endpoint the backend doesn't implement), so rotation today means either the self-service `PATCH /users/me/password` after first login, or a direct database update.
+
 ---
 
 # Memory Maintenance Rule

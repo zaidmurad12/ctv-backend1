@@ -26,6 +26,44 @@ the `API_PREFIX` (default `/api/v1`).
 Swagger/OpenAPI documentation is served at `/api/v1/docs` when
 `SWAGGER_ENABLED=true`.
 
+## Database seed (bootstrap administrator)
+
+A fresh database has no users at all, so there is no way to sign into
+`apps/admin` (or call any `/admin/*` endpoint) until one is created. Run
+the Prisma seed once against a freshly migrated database:
+
+```bash
+pnpm db:generate
+pnpm db:seed
+# equivalent: pnpm prisma db seed
+```
+
+This creates the three fixed roles (`ADMIN`, `EDITOR`, `VIEWER` — see
+`UserRoleEnum` in `prisma/schema.prisma`) and one Administrator account:
+
+| Field    | Value             |
+| -------- | ----------------- |
+| Email    | `admin@ctv.local` |
+| Password | `Admin@123`       |
+| Role     | `ADMIN`           |
+
+**Change this password immediately in any non-local environment** — it is
+a well-known bootstrap default, not a secret. There is no admin
+reset-password endpoint yet (only self-service `PATCH /users/me/password`
+via `src/users/`), so change it either by logging in as `admin@ctv.local`
+and calling that endpoint, or by re-hashing and updating the row directly.
+
+The seed (`prisma/seed.mjs` at the repo root, wired up via the `"prisma.seed"`
+field in the root `package.json` per Prisma's `db seed` convention) hashes
+the password with the same `bcrypt` library, algorithm, and
+`BCRYPT_SALT_ROUNDS` config (default `12`) as this package's real
+`BcryptPasswordHasher` (`src/auth/infrastructure/authServices.ts`), so the
+seeded account logs in through the normal `POST /auth/login` endpoint —
+there is no seed-specific auth path. Every write is an `upsert` keyed on a
+unique column (`Role.name`, `User.email`), so running the seed again is
+always safe: it will not duplicate roles or the admin user, and will not
+overwrite the password if it has since been changed through the app.
+
 ## API surface
 
 All responses use the standard envelope:
@@ -110,3 +148,6 @@ Uses `node --test`, consistent with every other package in this monorepo.
   `services/importer` in Milestone 4.
 - Search is a straightforward Postgres/Prisma title match; no dedicated
   search infrastructure exists yet (Milestone 8 scope).
+- The Prisma seed only bootstraps the three roles and one Administrator
+  account (see "Database seed" above) — it is not a general fixture/demo
+  data seed for movies, shows, or other content.
