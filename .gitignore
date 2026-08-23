@@ -10,3 +10,15 @@ build
 .env.local
 .env.*.local
 pnpm-lock.yaml
+
+# Android (apps/android-tv)
+.gradle
+local.properties
+*.jks
+*.keystore
+.cxx
+captures
+apps/android-tv/.jdk
+
+# Claude Code local settings (machine-specific tool permissions, not project config)
+.claude/settings.local.json

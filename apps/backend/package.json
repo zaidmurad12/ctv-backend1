@@ -17,6 +17,7 @@
     "@ctv-platform/domain": "workspace:*",
     "@ctv-platform/importer": "workspace:*",
     "@ctv-platform/infrastructure": "workspace:*",
+    "@ctv-platform/provider-consumet": "workspace:*",
     "@ctv-platform/sdk": "workspace:*",
     "@nestjs/common": "^10.4.6",
     "@nestjs/config": "^3.3.0",

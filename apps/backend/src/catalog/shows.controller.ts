@@ -38,6 +38,12 @@ export class ShowsController {
     return this.showsUseCases.listBySort('rating', 20);
   }
 
+  @Get('top-rated')
+  @ApiOperation({ summary: 'Highest rated TV shows with a meaningful vote count' })
+  topRated(): Promise<ShowSummaryDto[]> {
+    return this.showsUseCases.topRated(20);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Show details, including its seasons' })
   getById(@Param('id') id: string): Promise<ShowDetailDto> {

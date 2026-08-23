@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundError } from '@ctv-platform/domain';
 import { buildPaginationMeta, type PaginationMeta } from '../common/dto/pagination.dto.js';
+import { ProviderStreamResolver } from '../providers/providerStreamResolver.js';
 import type { CatalogListQueryDto } from './dto.js';
 import type {
   EpisodeDetailDto,
@@ -32,7 +33,10 @@ function toPage<T>(items: T[], total: number, query: CatalogListQueryDto): Page<
 
 @Injectable()
 export class MoviesUseCases {
-  constructor(private readonly movies: MovieQueryRepository) {}
+  constructor(
+    private readonly movies: MovieQueryRepository,
+    private readonly streamResolver: ProviderStreamResolver,
+  ) {}
 
   async list(query: CatalogListQueryDto): Promise<Page<MovieSummaryDto>> {
     const { items, total } = await this.movies.list(query);
@@ -47,6 +51,16 @@ export class MoviesUseCases {
     return items;
   }
 
+  /** specification: "Top Rated" — highest rated among movies with a meaningful vote count. */
+  async topRated(limit: number): Promise<MovieSummaryDto[]> {
+    const { items } = await this.movies.list({ sort: 'rating', limit, page: 1, minVotes: 50 });
+    return items;
+  }
+
+  async recommended(userId: string, limit: number): Promise<MovieSummaryDto[]> {
+    return this.movies.recommended(userId, limit);
+  }
+
   async getById(id: string): Promise<MovieDetailDto> {
     const movie = await this.movies.findById(id);
     if (!movie) {
@@ -55,14 +69,28 @@ export class MoviesUseCases {
     return movie;
   }
 
+  /**
+   * DB-stored streams (pre-imported by a future batch/import provider) win
+   * when present; otherwise falls back to live, on-demand resolution from
+   * whichever registered provider (e.g. Consumet) has them. See
+   * `ProviderStreamResolver` for the failover/caching behavior.
+   */
   async streams(id: string): Promise<StreamResponseDto[]> {
-    await this.getById(id);
-    return this.movies.listStreams(id);
+    const movie = await this.getById(id);
+    const dbStreams = await this.movies.listStreams(id);
+    if (dbStreams.length > 0) {
+      return dbStreams;
+    }
+    return this.streamResolver.resolveMovieStreams({ id: movie.id, title: movie.title });
   }
 
   async subtitles(id: string): Promise<SubtitleResponseDto[]> {
-    await this.getById(id);
-    return this.movies.listSubtitles(id);
+    const movie = await this.getById(id);
+    const dbSubtitles = await this.movies.listSubtitles(id);
+    if (dbSubtitles.length > 0) {
+      return dbSubtitles;
+    }
+    return this.streamResolver.resolveMovieSubtitles({ id: movie.id, title: movie.title });
   }
 }
 
@@ -83,6 +111,11 @@ export class ShowsUseCases {
     limit: number,
   ): Promise<ShowSummaryDto[]> {
     const { items } = await this.shows.list({ sort, limit, page: 1 });
+    return items;
+  }
+
+  async topRated(limit: number): Promise<ShowSummaryDto[]> {
+    const { items } = await this.shows.list({ sort: 'rating', limit, page: 1, minVotes: 50 });
     return items;
   }
 
@@ -128,7 +161,10 @@ export class SeasonsUseCases {
 
 @Injectable()
 export class EpisodesUseCases {
-  constructor(private readonly episodes: EpisodeQueryRepository) {}
+  constructor(
+    private readonly episodes: EpisodeQueryRepository,
+    private readonly streamResolver: ProviderStreamResolver,
+  ) {}
 
   async getById(id: string): Promise<EpisodeDetailDto> {
     const episode = await this.episodes.findById(id);
@@ -140,11 +176,27 @@ export class EpisodesUseCases {
 
   async streams(id: string): Promise<StreamResponseDto[]> {
     await this.getById(id);
-    return this.episodes.listStreams(id);
+    const dbStreams = await this.episodes.listStreams(id);
+    if (dbStreams.length > 0) {
+      return dbStreams;
+    }
+    const context = await this.episodes.findResolutionContext(id);
+    if (!context) {
+      return [];
+    }
+    return this.streamResolver.resolveEpisodeStreams({ id, ...context });
   }
 
   async subtitles(id: string): Promise<SubtitleResponseDto[]> {
     await this.getById(id);
-    return this.episodes.listSubtitles(id);
+    const dbSubtitles = await this.episodes.listSubtitles(id);
+    if (dbSubtitles.length > 0) {
+      return dbSubtitles;
+    }
+    const context = await this.episodes.findResolutionContext(id);
+    if (!context) {
+      return [];
+    }
+    return this.streamResolver.resolveEpisodeSubtitles({ id, ...context });
   }
 }

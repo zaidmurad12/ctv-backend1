@@ -31,6 +31,9 @@ export class ContinueWatchingResponseDto {
   @ApiProperty()
   title!: string;
 
+  @ApiPropertyOptional()
+  poster?: string | null;
+
   @ApiProperty()
   position!: number;
 

@@ -3,13 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node -e \"console.log('android-tv scaffold ready')\"",
-    "build": "tsc -p tsconfig.json",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.2"
+    "dev": "gradlew.bat assembleDebug",
+    "build": "gradlew.bat assembleDebug",
+    "typecheck": "echo \"native Android project — see ./gradlew build for real verification\""
   }
 }

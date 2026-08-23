@@ -46,6 +46,7 @@ export class ContinueWatchingRepository {
       movieId: row.movieId,
       episodeId: row.episodeId,
       title: row.movie?.title ?? row.episode?.title ?? '',
+      poster: row.movie?.poster ?? row.episode?.stillImage ?? null,
       position: row.position,
       updatedAt: row.updatedAt.toISOString(),
     }));

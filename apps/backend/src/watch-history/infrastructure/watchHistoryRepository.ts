@@ -38,6 +38,7 @@ export class WatchHistoryRepository {
       movieId: row.movieId,
       episodeId: row.episodeId,
       title: row.movie?.title ?? row.episode?.title ?? '',
+      poster: row.movie?.poster ?? row.episode?.stillImage ?? null,
       position: row.position,
       duration: row.duration,
       lastWatched: row.lastWatched.toISOString(),

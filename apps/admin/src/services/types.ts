@@ -158,6 +158,9 @@ export interface ProviderSummaryDto {
   readonly name: string;
   readonly priority: number;
   readonly capabilities: string[];
+  readonly isEnabled: boolean;
+  readonly lastSyncAt?: string | null;
+  readonly successRate?: number | null;
 }
 
 export interface ProviderHealthSummaryDto {

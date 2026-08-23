@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Chip, IconButton, Stack, Tooltip } from '@mui/material';
+import { Chip, IconButton, Stack, TextField, Tooltip } from '@mui/material';
 import PlayArrowOutlinedIcon from '@mui/icons-material/PlayArrowOutlined';
 import FavoriteOutlinedIcon from '@mui/icons-material/FavoriteBorderOutlined';
 import BlockOutlinedIcon from '@mui/icons-material/BlockOutlined';
@@ -77,6 +77,17 @@ function ProvidersPage() {
   const reloadMutation = useMutation({
     mutationFn: runAction(providersService.reload, 'Provider reloaded.'),
   });
+  const priorityMutation = useMutation({
+    mutationFn: async ({ id, priority }: { id: string; priority: number }) => {
+      try {
+        await providersService.updatePriority(id, priority);
+        notify('Priority updated.', 'success');
+        void queryClient.invalidateQueries({ queryKey: ['providers'] });
+      } catch (error) {
+        notify(error instanceof Error ? error.message : 'Failed to update priority.', 'error');
+      }
+    },
+  });
 
   const rows: ProviderRow[] = useMemo(() => {
     const healthById = new Map((healthQuery.data ?? []).map((entry) => [entry.providerId, entry]));
@@ -93,7 +104,36 @@ function ProvidersPage() {
 
   const columns: DataTableColumn<ProviderRow>[] = [
     { key: 'name', label: 'Provider Name', render: (row) => row.name },
-    { key: 'priority', label: 'Priority', render: (row) => row.priority },
+    {
+      key: 'enabled',
+      label: 'Enabled',
+      render: (row) => (
+        <Chip
+          size="small"
+          label={row.isEnabled ? 'Enabled' : 'Disabled'}
+          color={row.isEnabled ? 'success' : 'default'}
+        />
+      ),
+    },
+    {
+      key: 'priority',
+      label: 'Priority',
+      render: (row) => (
+        <TextField
+          size="small"
+          type="number"
+          defaultValue={row.priority}
+          sx={{ width: 80 }}
+          inputProps={{ min: 1 }}
+          onBlur={(event) => {
+            const priority = Number(event.target.value);
+            if (Number.isFinite(priority) && priority >= 1 && priority !== row.priority) {
+              priorityMutation.mutate({ id: row.id, priority });
+            }
+          }}
+        />
+      ),
+    },
     {
       key: 'capabilities',
       label: 'Capabilities',
@@ -118,6 +158,19 @@ function ProvidersPage() {
       key: 'lastCheck',
       label: 'Last Check',
       render: (row) => (row.health ? new Date(row.health.lastCheckedAt).toLocaleString() : '—'),
+    },
+    {
+      key: 'lastSync',
+      label: 'Last Sync',
+      render: (row) => (row.lastSyncAt ? new Date(row.lastSyncAt).toLocaleString() : '—'),
+    },
+    {
+      key: 'successRate',
+      label: 'Success Rate',
+      render: (row) =>
+        row.successRate === null || row.successRate === undefined
+          ? '—'
+          : `${Math.round(row.successRate * 100)}%`,
     },
     {
       key: 'actions',

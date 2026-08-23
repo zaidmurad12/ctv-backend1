@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
@@ -21,11 +22,18 @@ function loadRootEnv(): void {
 async function bootstrap(): Promise<void> {
   loadRootEnv();
   const config = createBackendConfig();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.use(helmet());
+  // `cross-origin` (not the default `same-origin`) so static assets under
+  // /static (subtitles, artwork) can be loaded by a frontend on another port.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.enableCors({ origin: config.corsOrigin === '*' ? true : config.corsOrigin.split(',') });
   app.setGlobalPrefix(config.apiPrefix.replace(/^\//, ''));
+
+  // apps/backend/dist/main.js -> repo root -> storage/. Serves demo subtitles
+  // (and any future importer artwork) outside the API prefix so player <track>
+  // URLs work with a plain static path, not versioned API routes.
+  app.useStaticAssets(path.resolve(__dirname, '../../../storage'), { prefix: '/static/' });
 
   if (config.swaggerEnabled) {
     const document = SwaggerModule.createDocument(

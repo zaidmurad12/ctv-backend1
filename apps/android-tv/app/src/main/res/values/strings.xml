@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CTV Platform</string>
+    <string name="home_section_movies">Movies</string>
+    <string name="home_loading">Loading movies…</string>
+    <string name="home_error">Couldn\'t load movies</string>
+    <string name="home_retry">Retry</string>
+</resources>

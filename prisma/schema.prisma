@@ -76,6 +76,7 @@ model Provider {
   priority         Int               @default(10)
   healthStatus     ProviderStatusEnum @default(UNKNOWN)
   lastCheck        DateTime?
+  lastSyncAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   deletedAt        DateTime?
@@ -114,6 +115,7 @@ model Movie {
   homepage           String?          @db.VarChar(1000)
   budget             BigInt?
   revenue            BigInt?
+  titleAr            String?          @db.VarChar(500)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -123,6 +125,9 @@ model Movie {
 
   providers          MovieProvider[]
   genres             MovieGenre[]
+  companies          MovieCompany[]
+  countries          MovieCountry[]
+  languages          MovieLanguage[]
   castMembers        MovieCastMember[]
   crewMembers        MovieCrewMember[]
   images             Image[]
@@ -157,12 +162,16 @@ model TVShow {
   logo               String?          @db.VarChar(1000)
   homepage           String?          @db.VarChar(1000)
   popularity         Decimal?         @db.Decimal(10, 2)
+  titleAr            String?          @db.VarChar(500)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
 
   providers          TVShowProvider[]
   genres             TVShowGenre[]
+  companies          TVShowCompany[]
+  countries          TVShowCountry[]
+  languages          TVShowLanguage[]
   seasons            Season[]
   castMembers        TVShowCastMember[]
   crewMembers        TVShowCrewMember[]
@@ -391,6 +400,9 @@ model Company {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  movies        MovieCompany[]
+  shows         TVShowCompany[]
+
   @@index([name])
 }
 
@@ -399,6 +411,9 @@ model Country {
   isoCode       String    @unique @db.VarChar(10)
   name          String    @db.VarChar(255)
   nativeName    String?   @db.VarChar(255)
+
+  movies        MovieCountry[]
+  shows         TVShowCountry[]
 
   @@index([name])
 }
@@ -409,6 +424,9 @@ model Language {
   englishName   String    @db.VarChar(255)
   nativeName    String?   @db.VarChar(255)
   rtl           Boolean   @default(false)
+
+  movies        MovieLanguage[]
+  shows         TVShowLanguage[]
 
   @@index([englishName])
 }
@@ -602,6 +620,72 @@ model TVShowGenre {
 
   @@id([showId, genreId])
   @@index([genreId])
+}
+
+model MovieCompany {
+  movieId   String
+  companyId String
+
+  movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, companyId])
+  @@index([companyId])
+}
+
+model TVShowCompany {
+  showId    String
+  companyId String
+
+  show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([showId, companyId])
+  @@index([companyId])
+}
+
+model MovieCountry {
+  movieId   String
+  countryId String
+
+  movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, countryId])
+  @@index([countryId])
+}
+
+model TVShowCountry {
+  showId    String
+  countryId String
+
+  show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([showId, countryId])
+  @@index([countryId])
+}
+
+model MovieLanguage {
+  movieId    String
+  languageId String
+
+  movie      Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, languageId])
+  @@index([languageId])
+}
+
+model TVShowLanguage {
+  showId     String
+  languageId String
+
+  show       TVShow   @relation(fields: [showId], references: [id], onDelete: Cascade)
+  language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@id([showId, languageId])
+  @@index([languageId])
 }
 
 model MovieCastMember {

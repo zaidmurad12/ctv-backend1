@@ -36,6 +36,9 @@ export class HistoryResponseDto {
   @ApiProperty()
   title!: string;
 
+  @ApiPropertyOptional()
+  poster?: string | null;
+
   @ApiProperty()
   position!: number;
 

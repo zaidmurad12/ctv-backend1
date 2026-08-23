@@ -8,6 +8,7 @@ import type {
   SubtitleResponseDto,
 } from '../dto.js';
 import { mapImagesToArtwork } from './artworkMapper.js';
+import { mapCast, mapDirector, mapGenres } from './creditsMapper.js';
 import { resolveOrderBy, resolveSkip } from './queryHelpers.js';
 
 export interface MovieListParams {
@@ -18,6 +19,7 @@ export interface MovieListParams {
   readonly search?: string;
   readonly year?: number;
   readonly language?: string;
+  readonly minVotes?: number;
 }
 
 @Injectable()
@@ -50,7 +52,12 @@ export class MovieQueryRepository {
   async findById(id: string): Promise<MovieDetailDto | null> {
     const row = await this.prisma.movie.findFirst({
       where: { id, deletedAt: null },
-      include: { images: true },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        castMembers: { include: { person: true }, orderBy: { order: 'asc' }, take: 8 },
+        crewMembers: { include: { person: true } },
+      },
     });
     if (!row) {
       return null;
@@ -61,6 +68,10 @@ export class MovieQueryRepository {
       ...this.toSummary(row),
       originalTitle: row.originalTitle,
       tagline: row.tagline,
+      titleAr: row.titleAr,
+      genres: mapGenres(row.genres),
+      cast: mapCast(row.castMembers),
+      director: mapDirector(row.crewMembers),
       streams,
       subtitles,
     };
@@ -93,6 +104,73 @@ export class MovieQueryRepository {
     }));
   }
 
+  /**
+   * Genre-overlap recommendations: ranks unseen PUBLISHED movies by how many
+   * genres they share with the user's favorited/watched movies. Falls back
+   * to popularity for users with no history yet (nothing to derive genres from).
+   */
+  async recommended(userId: string, limit: number): Promise<MovieSummaryDto[]> {
+    const [favorites, history] = await Promise.all([
+      this.prisma.favorite.findMany({
+        where: { userId, movieId: { not: null } },
+        select: { movieId: true },
+      }),
+      this.prisma.watchHistory.findMany({
+        where: { userId, movieId: { not: null } },
+        select: { movieId: true },
+      }),
+    ]);
+    const seenMovieIds = [
+      ...new Set(
+        [...favorites, ...history]
+          .map((row) => row.movieId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+
+    if (seenMovieIds.length === 0) {
+      const { items } = await this.list({ sort: 'popularity', limit, page: 1 });
+      return items;
+    }
+
+    const seenGenres = await this.prisma.movieGenre.findMany({
+      where: { movieId: { in: seenMovieIds } },
+      select: { genreId: true },
+    });
+    const genreIds = [...new Set(seenGenres.map((row) => row.genreId))];
+
+    if (genreIds.length === 0) {
+      const { items } = await this.list({ sort: 'popularity', limit, page: 1 });
+      return items;
+    }
+
+    const candidates = await this.prisma.movie.findMany({
+      where: {
+        deletedAt: null,
+        status: 'PUBLISHED',
+        id: { notIn: seenMovieIds },
+        genres: { some: { genreId: { in: genreIds } } },
+      },
+      include: { images: true, genres: { select: { genreId: true } } },
+      take: Math.max(limit * 5, 100),
+      orderBy: { popularity: 'desc' },
+    });
+
+    const genreIdSet = new Set(genreIds);
+    const scored = candidates.map((row) => ({
+      row,
+      score: row.genres.filter((g) => genreIdSet.has(g.genreId)).length,
+    }));
+    scored.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return Number(b.row.popularity ?? 0) - Number(a.row.popularity ?? 0);
+    });
+
+    return scored.slice(0, limit).map(({ row }) => this.toSummary(row));
+  }
+
   private buildWhere(params: MovieListParams): Record<string, unknown> {
     const where: Record<string, unknown> = { deletedAt: null, status: 'PUBLISHED' };
     if (params.search) {
@@ -106,6 +184,9 @@ export class MovieQueryRepository {
     }
     if (params.language) {
       where.originalLanguage = params.language;
+    }
+    if (params.minVotes) {
+      where.voteCount = { gte: params.minVotes };
     }
     return where;
   }

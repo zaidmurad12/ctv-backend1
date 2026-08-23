@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ProvidersModule } from '../providers/providers.module.js';
 import { MovieQueryRepository } from './infrastructure/movieQueryRepository.js';
 import { ShowQueryRepository } from './infrastructure/showQueryRepository.js';
 import {
@@ -11,6 +12,7 @@ import { EpisodesController, SeasonsController } from './seasonsEpisodes.control
 import { EpisodesUseCases, MoviesUseCases, SeasonsUseCases, ShowsUseCases } from './useCases.js';
 
 @Module({
+  imports: [ProvidersModule],
   controllers: [MoviesController, ShowsController, SeasonsController, EpisodesController],
   providers: [
     MovieQueryRepository,

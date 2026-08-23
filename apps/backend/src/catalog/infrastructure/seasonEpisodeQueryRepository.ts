@@ -102,4 +102,25 @@ export class EpisodeQueryRepository {
       isDefault: row.isDefault,
     }));
   }
+
+  /** The show title + season/episode numbers a live provider needs to resolve this episode — see ProviderStreamResolver. */
+  async findResolutionContext(
+    episodeId: string,
+  ): Promise<{ showTitle: string; seasonNumber: number; episodeNumber: number } | null> {
+    const row = await this.prisma.episode.findUnique({
+      where: { id: episodeId },
+      select: {
+        episodeNumber: true,
+        season: { select: { seasonNumber: true, show: { select: { title: true } } } },
+      },
+    });
+    if (!row) {
+      return null;
+    }
+    return {
+      showTitle: row.season.show.title,
+      seasonNumber: row.season.seasonNumber,
+      episodeNumber: row.episodeNumber,
+    };
+  }
 }

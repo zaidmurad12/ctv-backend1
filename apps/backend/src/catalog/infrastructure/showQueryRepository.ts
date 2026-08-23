@@ -3,6 +3,7 @@ import type { PrismaDatabaseClient } from '@ctv-platform/infrastructure';
 import { PrismaService } from '../../prisma/prismaService.js';
 import type { SeasonSummaryDto, ShowDetailDto, ShowSummaryDto } from '../dto.js';
 import { mapImagesToArtwork } from './artworkMapper.js';
+import { mapCast, mapDirector, mapGenres } from './creditsMapper.js';
 import { resolveOrderBy, resolveSkip } from './queryHelpers.js';
 import type { MovieListParams } from './movieQueryRepository.js';
 
@@ -36,14 +37,27 @@ export class ShowQueryRepository {
   async findById(id: string): Promise<ShowDetailDto | null> {
     const row = await this.prisma.tVShow.findFirst({
       where: { id, deletedAt: null },
-      include: { images: true },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        castMembers: { include: { person: true }, orderBy: { order: 'asc' }, take: 8 },
+        crewMembers: { include: { person: true } },
+      },
     });
     if (!row) {
       return null;
     }
 
     const seasons = await this.listSeasons(id);
-    return { ...this.toSummary(row), originalTitle: row.originalTitle, seasons };
+    return {
+      ...this.toSummary(row),
+      originalTitle: row.originalTitle,
+      titleAr: row.titleAr,
+      genres: mapGenres(row.genres),
+      cast: mapCast(row.castMembers),
+      director: mapDirector(row.crewMembers),
+      seasons,
+    };
   }
 
   async listSeasons(showId: string): Promise<SeasonSummaryDto[]> {
@@ -70,6 +84,9 @@ export class ShowQueryRepository {
         gte: new Date(Date.UTC(params.year, 0, 1)),
         lt: new Date(Date.UTC(params.year + 1, 0, 1)),
       };
+    }
+    if (params.minVotes) {
+      where.voteCount = { gte: params.minVotes };
     }
     return where;
   }

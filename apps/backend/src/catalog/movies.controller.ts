@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import type { AuthenticatedUser } from '../common/auth/authenticatedUser.js';
+import { CurrentUser, Public } from '../common/decorators/decorators.js';
 import { CatalogListQueryDto } from './dto.js';
 import type {
   MovieDetailDto,
@@ -20,6 +22,7 @@ const MOVIES_THROTTLE = { default: { limit: 120, ttl: 60_000 } };
 export class MoviesController {
   constructor(private readonly moviesUseCases: MoviesUseCases) {}
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'List movies with search/sort/pagination' })
   list(@Query() query: CatalogListQueryDto): Promise<Page<MovieSummaryDto>> {
@@ -42,6 +45,19 @@ export class MoviesController {
   @ApiOperation({ summary: 'Highest rated movies' })
   trending(): Promise<MovieSummaryDto[]> {
     return this.moviesUseCases.listBySort('rating', 20);
+  }
+
+  @Get('top-rated')
+  @ApiOperation({ summary: 'Highest rated movies with a meaningful vote count' })
+  topRated(): Promise<MovieSummaryDto[]> {
+    return this.moviesUseCases.topRated(20);
+  }
+
+  @ApiBearerAuth()
+  @Get('recommended')
+  @ApiOperation({ summary: 'Movies recommended for the authenticated user, based on genres' })
+  recommended(@CurrentUser() user: AuthenticatedUser): Promise<MovieSummaryDto[]> {
+    return this.moviesUseCases.recommended(user.userId, 20);
   }
 
   @Get(':id')

@@ -105,12 +105,35 @@ export class MovieSummaryDto {
   artwork!: ArtworkDto;
 }
 
+export class CastMemberDto {
+  @ApiProperty()
+  name!: string;
+
+  @ApiPropertyOptional()
+  character?: string | null;
+
+  @ApiPropertyOptional()
+  photo?: string | null;
+}
+
 export class MovieDetailDto extends MovieSummaryDto {
   @ApiPropertyOptional()
   originalTitle?: string | null;
 
   @ApiPropertyOptional()
   tagline?: string | null;
+
+  @ApiPropertyOptional()
+  titleAr?: string | null;
+
+  @ApiProperty({ type: [String] })
+  genres!: string[];
+
+  @ApiProperty({ type: [CastMemberDto] })
+  cast!: CastMemberDto[];
+
+  @ApiPropertyOptional()
+  director?: string | null;
 
   @ApiProperty({ type: [StreamResponseDto] })
   streams!: StreamResponseDto[];
@@ -168,6 +191,18 @@ export class ShowSummaryDto {
 export class ShowDetailDto extends ShowSummaryDto {
   @ApiPropertyOptional()
   originalTitle?: string | null;
+
+  @ApiPropertyOptional()
+  titleAr?: string | null;
+
+  @ApiProperty({ type: [String] })
+  genres!: string[];
+
+  @ApiProperty({ type: [CastMemberDto] })
+  cast!: CastMemberDto[];
+
+  @ApiPropertyOptional()
+  director?: string | null;
 
   @ApiProperty({ type: [SeasonSummaryDto] })
   seasons!: SeasonSummaryDto[];

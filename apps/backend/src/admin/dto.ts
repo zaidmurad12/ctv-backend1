@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, Min } from 'class-validator';
 import { PaginationQueryDto } from '../common/dto/pagination.dto.js';
 
 export class AdminListUsersQueryDto extends PaginationQueryDto {}
@@ -42,6 +42,17 @@ export class ProviderSummaryDto {
 
   @ApiProperty({ type: [String] })
   capabilities!: string[];
+
+  @ApiProperty()
+  isEnabled!: boolean;
+
+  @ApiPropertyOptional()
+  lastSyncAt?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Rolling success rate in [0, 1] since process start; null until first use.',
+  })
+  successRate?: number | null;
 }
 
 export class ProviderHealthSummaryDto {
@@ -56,4 +67,11 @@ export class ProviderHealthSummaryDto {
 
   @ApiProperty()
   lastCheckedAt!: string;
+}
+
+export class UpdateProviderPriorityDto {
+  @ApiProperty({ description: 'Lower number = higher priority.' })
+  @IsInt()
+  @Min(1)
+  priority!: number;
 }
