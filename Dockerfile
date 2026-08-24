@@ -6,6 +6,15 @@
 FROM node:20-slim AS deps
 WORKDIR /repo
 
+# node:20-slim ships with no OpenSSL/libssl at all. Without it, `prisma generate` (run below,
+# in the build stage) can't detect a real openssl version and silently defaults to bundling the
+# debian-openssl-1.1.x query engine variant as a guess — which then fails to load at runtime
+# with "libssl.so.1.1: cannot open shared object file", since no libssl of any version exists
+# in either stage. Installing openssl here lets generate correctly target what's actually
+# available; the runtime stage (a separate `FROM node:20-slim`, sharing no apt state with this
+# one) needs the same install for the generated engine to actually load.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
@@ -46,6 +55,8 @@ RUN pnpm --filter "@ctv-platform/backend..." run build
 FROM node:20-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /repo ./
 
