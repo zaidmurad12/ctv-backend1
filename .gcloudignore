@@ -1,0 +1,19 @@
+# gcloud's default behavior (no .gcloudignore present) mirrors .gitignore, which excludes
+# pnpm-lock.yaml here — silently breaking the Docker build's `COPY pnpm-lock.yaml` step. This
+# file intentionally does NOT reference .gitignore, so the lockfile (and anything else
+# git-ignored but build-relevant) actually reaches the Cloud Build upload.
+.git
+.gradle
+.kotlin
+.idea
+apps/android-tv/.jdk
+apps/android-tv/.gradle
+apps/android-tv/.kotlin
+apps/android-tv/app/build
+apps/android-tv/build
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/*.tsbuildinfo
+*.apk

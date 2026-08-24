@@ -35,11 +35,13 @@ COPY apps/backend apps/backend
 # Prisma CLI is a root devDependency (see package.json's db:generate script) — @prisma/client's
 # generated types are needed before backend's own tsc build can compile PrismaService.
 RUN pnpm db:generate
-# `...@ctv-platform/backend` = backend + its full dependency closure (domain, sdk,
-# infrastructure, provider-consumet, importer), built in topological order via each package's
-# own "build": "tsc -p tsconfig.json" — deliberately not the root `turbo run build`, which would
-# also build apps/admin and apps/web (unnecessary here, and admin/web need their own env vars).
-RUN pnpm --filter "...@ctv-platform/backend" run build
+# `@ctv-platform/backend...` (dots AFTER, not before — pnpm's `...pkg` actually selects
+# dependents, the opposite of what's needed here) = backend + its full dependency closure
+# (domain, sdk, infrastructure, provider-consumet, importer), built in topological order via
+# each package's own "build": "tsc -p tsconfig.json" — deliberately not the root
+# `turbo run build`, which would also build apps/admin and apps/web (unnecessary here, and
+# admin/web need their own env vars).
+RUN pnpm --filter "@ctv-platform/backend..." run build
 
 FROM node:20-slim AS runtime
 WORKDIR /repo
