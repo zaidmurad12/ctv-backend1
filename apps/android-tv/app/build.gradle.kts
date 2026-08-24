@@ -17,8 +17,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // LAN IP of the dev machine running apps/backend — see README.md if this changes networks.
-        buildConfigField("String", "API_BASE_URL", "\"http://192.168.0.115:3000/api/v1\"")
+        // Deployed backend on Cloud Run (apps/backend) — persistent HTTPS URL, replaces the
+        // old LAN dev-machine IP now that the app doesn't need the dev backend running locally.
+        buildConfigField("String", "API_BASE_URL", "\"https://ctv-platform-backend-188952464622.me-central1.run.app/api/v1\"")
     }
 
     buildTypes {

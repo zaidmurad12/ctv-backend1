@@ -60,6 +60,10 @@ export class MoviesController {
     return this.moviesUseCases.recommended(user.userId, 20);
   }
 
+  // Matches `list()`'s @Public() above: the Android TV app browses movies without a login
+  // gate, so a movie's own detail page (metadata only — streams/subtitles below stay
+  // authenticated) must be reachable the same way, or tapping any browsed card 401s.
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Movie details, including streams and subtitles' })
   getById(@Param('id') id: string): Promise<MovieDetailDto> {
