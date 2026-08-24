@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,12 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,18 +37,12 @@ import coil.compose.AsyncImage
 import com.ctvplatform.androidtv.R
 import com.ctvplatform.androidtv.data.remote.dto.MovieSummaryDto
 import com.ctvplatform.androidtv.ui.components.MoviePosterCard
-import com.ctvplatform.androidtv.ui.core.Focusable
-import com.ctvplatform.androidtv.ui.core.focusGlow
 import com.ctvplatform.androidtv.ui.core.fs
 import com.ctvplatform.androidtv.ui.core.s
 import com.ctvplatform.androidtv.ui.theme.CtvBackground
 
 @Composable
-fun HomeScreen(
-    onMovieSelected: (String) -> Unit = {},
-    onSearchClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {},
-) {
+fun HomeScreen(onMovieSelected: (String) -> Unit = {}) {
     val viewModel: HomeViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsState()
 
@@ -69,36 +57,13 @@ fun HomeScreen(
             else -> HomeContent(movies = state.movies, onMovieSelected = onMovieSelected)
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = s(40), vertical = s(24)),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(s(12))) {
-                TopBarIcon(icon = Icons.Filled.Search, contentDescription = "بحث", onClick = onSearchClick)
-                TopBarIcon(icon = Icons.Filled.Settings, contentDescription = "الإعدادات", onClick = onSettingsClick)
-            }
-        }
-    }
-}
-
-@Composable
-private fun TopBarIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, contentDescription: String, onClick: () -> Unit) {
-    Focusable(onClick = onClick) { focused ->
-        Box(
-            modifier = Modifier
-                .focusGlow(focused, tight = true, shape = CircleShape)
-                .background(if (focused) Color.White else Color.White.copy(alpha = 0.08f), CircleShape)
-                .padding(s(10)),
-        ) {
-            Icon(icon, contentDescription = contentDescription, tint = if (focused) Color.Black else Color.White)
-        }
+        // The sidebar now owns search/settings entry points — this is just the wordmark.
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = s(40), vertical = s(24)),
+        )
     }
 }
 
