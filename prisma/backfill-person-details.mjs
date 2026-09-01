@@ -7,12 +7,21 @@
  * when this fetch actually succeeds - a repeat failure here just leaves the row as it was,
  * exactly like the now-fixed ensurePerson does.
  *
+ * Runs daily (see TranslationBackfillService) and re-checks the *same* still-missing rows every
+ * time by design - most turned out to genuinely have nothing on TMDB at all (obscure/minor cast
+ * or crew TMDB itself never filled in), not a fetch failure, so nothing about retrying them again
+ * tomorrow was ever going to succeed. detailFetchAttempts caps that at MAX_ATTEMPTS per row so
+ * this script's own run budget stops going toward rows that have already proven, repeatedly,
+ * they're not going to change - confirmed against real production logs: the same 1068 rows,
+ * zero filled, three days straight.
+ *
  * Usage: node prisma/backfill-person-details.mjs
  */
 import { PrismaClient } from '@prisma/client';
 import { tmdbGet, translateToArabic } from './bootstrap-importer.mjs';
 
 const prisma = new PrismaClient();
+const MAX_ATTEMPTS = 5;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,20 +47,34 @@ async function main() {
   // it just needs a moment to wake up, not anything actually wrong.
   const people = await connectWithRetry(() =>
     prisma.person.findMany({
-      where: { tmdbId: { not: null }, birthday: null, biography: null, placeOfBirth: null },
-      select: { id: true, tmdbId: true, name: true },
+      where: {
+        tmdbId: { not: null },
+        birthday: null,
+        biography: null,
+        placeOfBirth: null,
+        detailFetchAttempts: { lt: MAX_ATTEMPTS },
+      },
+      select: { id: true, tmdbId: true, name: true, detailFetchAttempts: true },
     }),
   );
-  console.log(`Re-checking ${people.length} people with no detail on file...`);
+  console.log(`Re-checking ${people.length} people with no detail on file (under ${MAX_ATTEMPTS} attempts)...`);
 
   let filled = 0;
   let stillMissing = 0;
+  let gaveUp = 0;
   for (const person of people) {
     let detail;
     try {
       detail = await tmdbGet(`/person/${person.tmdbId}`, { language: 'en-US' });
     } catch (err) {
       console.log(`  - ${person.name}: fetch failed (${err.message})`);
+      if (person.detailFetchAttempts + 1 >= MAX_ATTEMPTS) gaveUp++;
+      await connectWithRetry(() =>
+        prisma.person.update({
+          where: { id: person.id },
+          data: { detailFetchAttempts: { increment: 1 } },
+        }),
+      );
       stillMissing++;
       continue;
     }
@@ -59,7 +82,16 @@ async function main() {
     const birthday = detail.birthday ? new Date(detail.birthday) : null;
     const placeOfBirth = detail.place_of_birth?.trim() || null;
     if (!biography && !birthday && !placeOfBirth) {
-      // Genuinely nothing on TMDB for this person, not a fetch failure - leave alone.
+      // Genuinely nothing on TMDB for this person, not a fetch failure - counts toward the same
+      // attempt cap, since a person TMDB has had nothing on for MAX_ATTEMPTS days running isn't
+      // meaningfully different from one whose fetch kept erroring out.
+      if (person.detailFetchAttempts + 1 >= MAX_ATTEMPTS) gaveUp++;
+      await connectWithRetry(() =>
+        prisma.person.update({
+          where: { id: person.id },
+          data: { detailFetchAttempts: { increment: 1 } },
+        }),
+      );
       stillMissing++;
       continue;
     }
@@ -81,7 +113,9 @@ async function main() {
     console.log(`  + ${person.name}`);
   }
 
-  console.log(`\nDone. Filled in: ${filled}, still nothing on TMDB or fetch kept failing: ${stillMissing}.`);
+  console.log(
+    `\nDone. Filled in: ${filled}, still nothing on TMDB or fetch kept failing: ${stillMissing} (${gaveUp} of those just hit the ${MAX_ATTEMPTS}-attempt cap and won't be retried again).`,
+  );
 }
 
 main()

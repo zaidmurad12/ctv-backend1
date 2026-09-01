@@ -473,6 +473,13 @@ model Person {
   placeOfBirth  String?              @db.VarChar(500)
   photo         String?              @db.VarChar(1000)
   popularity    Decimal?             @db.Decimal(10, 2)
+  // How many times prisma/backfill-person-details.mjs has checked this row and found nothing on
+  // TMDB (see that script's own comment) - most of these never actually gain a detail later, so
+  // retrying forever just burns that script's run budget on rows that will realistically never
+  // change. Capped at MAX_ATTEMPTS there instead of retried indefinitely; untouched once a real
+  // fetch succeeds, since the row stops matching that script's own "all three still null" filter
+  // at that point regardless of this count.
+  detailFetchAttempts Int            @default(0)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
