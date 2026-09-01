@@ -255,7 +255,6 @@ export function PreviewModal({
 
   useEffect(() => {
     applySync(offsetMs, speed);
-     
   }, [offsetMs, speed, trackUrl]);
 
   function changeOffset(delta: number) {
@@ -380,9 +379,17 @@ export function PreviewModal({
             {streamError && <p className="text-[11px] text-red-400 mb-2">{streamError}</p>}
 
             {stream && (
+              // key was `${stream.id}-${trackUrl ?? 'no-track'}` - including trackUrl meant
+              // picking a subtitle (trackUrl going from null to a real blob URL) forced React to
+              // tear down this whole element and mount a brand new one, but the hls.js instance
+              // attached to the *old* one (see the effect above, keyed only on stream.id/
+              // streamUrl - it never re-ran) had no idea its video element had just been replaced
+              // out from under it - reported as "the video stops when I turn subtitles on." The
+              // <track> child below already updates in place when trackUrl changes on its own;
+              // nothing here needed the parent <video> to remount for that at all.
               <video
                 ref={videoRef}
-                key={`${stream.id}-${trackUrl ?? 'no-track'}`}
+                key={stream.id}
                 controls
                 className="w-full rounded-lg bg-black aspect-video mb-3"
               >
