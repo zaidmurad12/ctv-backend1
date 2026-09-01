@@ -1,0 +1,790 @@
+# Coding Conventions
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the coding conventions for the entire CTV Platform.
+
+Every source file generated for this project must follow these conventions.
+
+Consistency is more important than personal preference.
+
+---
+
+# General Principles
+
+Code should be
+
+Readable
+
+Predictable
+
+Maintainable
+
+Self-documenting
+
+Reusable
+
+Testable
+
+Production Ready
+
+---
+
+# Language
+
+Backend
+
+TypeScript
+
+Strict Mode
+
+Enabled
+
+Android
+
+Kotlin
+
+Dashboard
+
+TypeScript
+
+---
+
+# File Naming
+
+Use
+
+camelCase
+
+Examples
+
+movieService.ts
+
+movieRepository.ts
+
+movieController.ts
+
+subtitleMapper.ts
+
+providerRegistry.ts
+
+Never use
+
+MovieService.ts
+
+movie_service.ts
+
+movie-service.ts
+
+---
+
+# Folder Naming
+
+Use
+
+lowercase
+
+Examples
+
+providers
+
+controllers
+
+repositories
+
+services
+
+modules
+
+Never
+
+Controllers
+
+MovieService
+
+Movie-Service
+
+---
+
+# Class Naming
+
+Use
+
+PascalCase
+
+Examples
+
+MovieService
+
+ProviderRegistry
+
+ImportWorker
+
+---
+
+# Interface Naming
+
+Prefix
+
+I
+
+Examples
+
+IMovieRepository
+
+IProvider
+
+ILogger
+
+---
+
+# Enum Naming
+
+Suffix
+
+Enum
+
+Examples
+
+MovieStatusEnum
+
+ProviderTypeEnum
+
+UserRoleEnum
+
+---
+
+# DTO Naming
+
+Suffix
+
+Dto
+
+Examples
+
+CreateMovieDto
+
+UpdateMovieDto
+
+SearchMovieDto
+
+---
+
+# Repository Naming
+
+Suffix
+
+Repository
+
+Examples
+
+MovieRepository
+
+GenreRepository
+
+SubtitleRepository
+
+---
+
+# Service Naming
+
+Suffix
+
+Service
+
+Examples
+
+MovieService
+
+ImportService
+
+PlayerService
+
+---
+
+# Controller Naming
+
+Suffix
+
+Controller
+
+Examples
+
+MovieController
+
+SearchController
+
+ProviderController
+
+---
+
+# Module Naming
+
+Suffix
+
+Module
+
+Examples
+
+MovieModule
+
+ProviderModule
+
+ImportModule
+
+---
+
+# Variable Naming
+
+Use descriptive names.
+
+Good
+
+movieRepository
+
+providerHealth
+
+subtitleLanguage
+
+Bad
+
+mr
+
+tmp
+
+data1
+
+value2
+
+---
+
+# Boolean Naming
+
+Prefix
+
+is
+
+has
+
+can
+
+should
+
+Examples
+
+isAvailable
+
+hasStreams
+
+canPlay
+
+shouldRetry
+
+---
+
+# Constants
+
+UPPER_CASE
+
+Examples
+
+DEFAULT_TIMEOUT
+
+MAX_RETRIES
+
+CACHE_DURATION
+
+---
+
+# Imports
+
+Order
+
+1
+
+Node Modules
+
+2
+
+Third-party Libraries
+
+3
+
+Internal Packages
+
+4
+
+Relative Imports
+
+Separate groups with one blank line.
+
+---
+
+# Import Rules
+
+No wildcard imports.
+
+No unused imports.
+
+Sort alphabetically inside each group.
+
+---
+
+# Functions
+
+Maximum
+
+50 lines
+
+Preferred
+
+20 lines
+
+One responsibility only.
+
+---
+
+# Parameters
+
+Maximum
+
+4
+
+If more than 4
+
+Use DTO or Options object.
+
+---
+
+# Return Values
+
+Always declare return types.
+
+Never rely on implicit return types for public functions.
+
+---
+
+# Async
+
+Always use
+
+async/await
+
+Avoid
+
+.then()
+
+.catch()
+
+Except where explicitly required.
+
+---
+
+# Null Handling
+
+Avoid null.
+
+Prefer
+
+undefined
+
+Optional Types
+
+Result Objects
+
+---
+
+# Optional Values
+
+Use
+
+?
+
+instead of nullable fields whenever possible.
+
+---
+
+# Error Handling
+
+Never ignore exceptions.
+
+Never return null on failure.
+
+Throw typed exceptions.
+
+Log unexpected errors.
+
+---
+
+# Comments
+
+Avoid unnecessary comments.
+
+Code should explain itself.
+
+Allowed
+
+Business Rules
+
+Complex Algorithms
+
+Provider Quirks
+
+Forbidden
+
+Commenting obvious code.
+
+---
+
+# Magic Numbers
+
+Forbidden.
+
+Use constants.
+
+Good
+
+MAX_PAGE_SIZE
+
+Bad
+
+100
+
+---
+
+# Strings
+
+Repeated strings become constants.
+
+---
+
+# Conditionals
+
+Prefer early return.
+
+Avoid deeply nested conditions.
+
+Maximum nesting
+
+3
+
+---
+
+# Switch
+
+Use exhaustive switch statements.
+
+Default branch required.
+
+---
+
+# Collections
+
+Prefer
+
+Map
+
+Set
+
+over arrays when appropriate.
+
+---
+
+# Loops
+
+Prefer
+
+for...of
+
+Avoid
+
+forEach
+
+for async operations.
+
+---
+
+# Immutability
+
+Use
+
+const
+
+by default.
+
+Use
+
+let
+
+only when required.
+
+Never use
+
+var
+
+---
+
+# TypeScript Rules
+
+Strict Mode
+
+Enabled
+
+No any
+
+No ts-ignore
+
+No ts-expect-error
+
+No implicit any
+
+No implicit returns
+
+---
+
+# Types
+
+Prefer
+
+interface
+
+for contracts.
+
+Prefer
+
+type
+
+for unions and utility types.
+
+---
+
+# Dependency Injection
+
+Always inject dependencies.
+
+Never instantiate services manually.
+
+---
+
+# Logging
+
+Use Logger Service only.
+
+Never use
+
+console.log()
+
+console.error()
+
+console.warn()
+
+Production code must never contain console statements.
+
+---
+
+# API Controllers
+
+Controllers must
+
+Validate
+
+Authorize
+
+Call Service
+
+Return DTO
+
+Nothing else.
+
+---
+
+# Services
+
+Services contain business logic.
+
+Services never access HTTP directly.
+
+---
+
+# Repositories
+
+Repositories contain database access only.
+
+No business logic.
+
+---
+
+# Providers
+
+Providers contain communication with external systems only.
+
+No database access.
+
+No business logic.
+
+---
+
+# DTOs
+
+Immutable.
+
+Validated.
+
+Documented.
+
+---
+
+# Mappers
+
+All Provider Models must pass through Mapper classes.
+
+Never expose external models directly.
+
+---
+
+# Tests
+
+Arrange
+
+Act
+
+Assert
+
+Pattern
+
+Required.
+
+---
+
+# Formatting
+
+Indentation
+
+4 Spaces
+
+Line Length
+
+120 Characters
+
+Trailing Spaces
+
+Forbidden
+
+Final Newline
+
+Required
+
+---
+
+# Documentation
+
+Every public class requires
+
+Description
+
+Responsibility
+
+Dependencies
+
+Every public method requires
+
+Description
+
+Parameters
+
+Return Value
+
+Exceptions
+
+---
+
+# TODO Rules
+
+TODO
+
+Forbidden
+
+FIXME
+
+Forbidden
+
+HACK
+
+Forbidden
+
+Temporary code is not allowed.
+
+---
+
+# Dead Code
+
+Remove immediately.
+
+Never leave unused code.
+
+---
+
+# Duplication
+
+Never duplicate business logic.
+
+Extract shared functionality.
+
+---
+
+# Refactoring
+
+Refactor immediately when
+
+Function becomes too long.
+
+Class has multiple responsibilities.
+
+Logic duplicated.
+
+Names become unclear.
+
+---
+
+# Code Review Checklist
+
+Before code is accepted
+
+✓ Compiles
+
+✓ Strict Mode Passes
+
+✓ Lint Passes
+
+✓ Tests Pass
+
+✓ Naming Correct
+
+✓ Documentation Updated
+
+✓ No Console Statements
+
+✓ No TODO
+
+✓ No any
+
+✓ No Duplicated Logic
+
+✓ Clean Architecture Respected
+
+---
+
+# Golden Rule
+
+Write code as if another senior engineer will maintain it for the next ten years.
+
+Favor clarity over cleverness.
+
+Favor maintainability over brevity.
+
+Every file should be understandable without reading the rest of the project.

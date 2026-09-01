@@ -1,0 +1,839 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProviderStatusEnum {
+  HEALTHY
+  UNAVAILABLE
+  MAINTENANCE
+  DISABLED
+  AUTHENTICATION_FAILED
+  RATE_LIMITED
+  UNKNOWN
+}
+
+enum MovieStatusEnum {
+  DRAFT
+  PENDING
+  PUBLISHED
+  REMOVED
+  INACTIVE
+}
+
+enum ImportStatusEnum {
+  PENDING
+  RUNNING
+  PAUSED
+  RETRYING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SyncStatusEnum {
+  PENDING
+  RUNNING
+  PAUSED
+  RETRYING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum UserRoleEnum {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum ImageTypeEnum {
+  POSTER
+  BACKDROP
+  LOGO
+  THUMBNAIL
+  STILL
+}
+
+enum SettingTypeEnum {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+model Provider {
+  id               String            @id @default(uuid())
+  name             String            @db.VarChar(255)
+  slug             String            @unique @db.VarChar(100)
+  version          String            @db.VarChar(50)
+  baseUrl          String?           @db.VarChar(500)
+  isEnabled        Boolean           @default(true)
+  priority         Int               @default(10)
+  healthStatus     ProviderStatusEnum @default(UNKNOWN)
+  lastCheck        DateTime?
+  lastSyncAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+
+  movieProviders   MovieProvider[]
+  tvShowProviders  TVShowProvider[]
+  episodeProviders EpisodeProvider[]
+  importJobs       ImportJob[]
+  syncJobs         SyncJob[]
+
+  @@index([slug])
+  @@index([isEnabled, priority])
+  @@index([healthStatus])
+}
+
+model Movie {
+  id                 String           @id @default(uuid())
+  tmdbId             String?          @unique
+  imdbId             String?          @unique
+  title              String           @db.VarChar(500)
+  originalTitle      String?          @db.VarChar(500)
+  overview           String?          @db.Text
+  // TMDB's own community-contributed Arabic translation when it has one (see
+  // extractArabicTranslation in bootstrap-importer.mjs) - free and often already correct, unlike
+  // biographyAr which has no such source and needs a real (quota-limited) Gemini call every time.
+  // Only actually Gemini-translated as a fallback when TMDB has no Arabic overview on file.
+  overviewAr         String?          @db.Text
+  tagline            String?          @db.VarChar(500)
+  releaseDate        DateTime?
+  runtime            Int?
+  status             MovieStatusEnum  @default(PENDING)
+  rating             Decimal?         @db.Decimal(4, 2)
+  voteCount          Int              @default(0)
+  ageRating          String?          @db.VarChar(50)
+  originalLanguage   String?          @db.VarChar(10)
+  poster             String?          @db.VarChar(1000)
+  backdrop           String?          @db.VarChar(1000)
+  logo               String?          @db.VarChar(1000)
+  trailer            String?          @db.VarChar(1000)
+  popularity         Decimal?         @db.Decimal(10, 2)
+  homepage           String?          @db.VarChar(1000)
+  budget             BigInt?
+  revenue            BigInt?
+  titleAr            String?          @db.VarChar(500)
+  // Null = not in the home hero/banner carousel; otherwise its position there (0 = first).
+  // Set exclusively through the admin panel's banner-management page - never by the TMDB
+  // importer, so re-importing a movie never disturbs a curated banner selection.
+  featuredOrder      Int?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  collection         Collection?      @relation(fields: [collectionId], references: [id])
+  collectionId       String?
+
+  providers          MovieProvider[]
+  genres             MovieGenre[]
+  companies          MovieCompany[]
+  countries          MovieCountry[]
+  languages          MovieLanguage[]
+  castMembers        MovieCastMember[]
+  crewMembers        MovieCrewMember[]
+  images             Image[]
+  favorites          Favorite[]
+  watchHistory       WatchHistory[]
+  continueWatching   ContinueWatching[]
+  syncIssue          SyncIssue?
+
+  @@index([tmdbId])
+  @@index([imdbId])
+  @@index([title])
+  @@index([releaseDate])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TVShow {
+  id                 String           @id @default(uuid())
+  tmdbId             String?          @unique
+  imdbId             String?          @unique
+  title              String           @db.VarChar(500)
+  originalTitle      String?          @db.VarChar(500)
+  overview           String?          @db.Text
+  // See Movie.overviewAr's own comment - same TMDB-translation-first, Gemini-fallback source.
+  overviewAr         String?          @db.Text
+  status             MovieStatusEnum  @default(PENDING)
+  releaseDate        DateTime?
+  lastAirDate        DateTime?
+  numberOfSeasons    Int              @default(0)
+  numberOfEpisodes   Int              @default(0)
+  rating             Decimal?         @db.Decimal(4, 2)
+  voteCount          Int              @default(0)
+  ageRating          String?          @db.VarChar(50)
+  originalLanguage   String?          @db.VarChar(10)
+  poster             String?          @db.VarChar(1000)
+  backdrop           String?          @db.VarChar(1000)
+  logo               String?          @db.VarChar(1000)
+  homepage           String?          @db.VarChar(1000)
+  popularity         Decimal?         @db.Decimal(10, 2)
+  titleAr            String?          @db.VarChar(500)
+  // Null = not in the home hero/banner carousel; otherwise its position there (0 = first) -
+  // same convention as Movie.featuredOrder (see its own comment), merged with movies' own
+  // ordering at read time since the carousel can mix both.
+  featuredOrder      Int?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  providers          TVShowProvider[]
+  genres             TVShowGenre[]
+  companies          TVShowCompany[]
+  countries          TVShowCountry[]
+  languages          TVShowLanguage[]
+  seasons            Season[]
+  castMembers        TVShowCastMember[]
+  crewMembers        TVShowCrewMember[]
+  images             Image[]
+  favorites          Favorite[]
+  watchHistory       WatchHistory[]
+  continueWatching   ContinueWatching[]
+
+  @@index([tmdbId])
+  @@index([title])
+  @@index([releaseDate])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Season {
+  id             String    @id @default(uuid())
+  showId         String
+  seasonNumber   Int
+  name           String?   @db.VarChar(500)
+  overview       String?   @db.Text
+  poster         String?   @db.VarChar(1000)
+  airDate        DateTime?
+  episodeCount   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  show           TVShow    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  episodes       Episode[]
+
+  @@unique([showId, seasonNumber])
+  @@index([showId])
+  @@index([seasonNumber])
+}
+
+model Episode {
+  id             String    @id @default(uuid())
+  seasonId       String
+  episodeNumber  Int
+  title          String    @db.VarChar(500)
+  overview       String?   @db.Text
+  // Fetched via a second per-season TMDB request with language=ar (see importShow in
+  // bootstrap-importer.mjs) rather than Gemini - one extra call covers every episode in the
+  // season at once, and TMDB frequently already has these for popular shows. Left null (falls
+  // back to the English title/overview in the app) when TMDB has no Arabic data for an episode -
+  // not Gemini-translated, unlike Movie/TVShow's own overviewAr, since doing that per episode
+  // would multiply Gemini's already-tight quota by the show's entire episode count.
+  titleAr        String?   @db.VarChar(500)
+  overviewAr     String?   @db.Text
+  runtime        Int?
+  airDate        DateTime?
+  rating         Decimal?  @db.Decimal(4, 2)
+  voteCount      Int       @default(0)
+  stillImage     String?   @db.VarChar(1000)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  season         Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  providers      EpisodeProvider[]
+  watchHistory   WatchHistory[]
+  continueWatching ContinueWatching[]
+  syncIssue      SyncIssue?
+
+  @@unique([seasonId, episodeNumber])
+  @@index([seasonId])
+  @@index([episodeNumber])
+}
+
+model MovieProvider {
+  id            String    @id @default(uuid())
+  movieId       String
+  providerId    String
+  externalId    String?   @db.VarChar(255)
+  sourceTitle   String?   @db.VarChar(500)
+  sourceUrl     String?   @db.VarChar(2000)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  movie         Movie     @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  provider      Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  streams       Stream[]
+  subtitles     Subtitle[]
+
+  @@unique([movieId, providerId])
+  @@index([movieId])
+  @@index([providerId])
+}
+
+model TVShowProvider {
+  id            String    @id @default(uuid())
+  showId        String
+  providerId    String
+  externalId    String?   @db.VarChar(255)
+  sourceTitle   String?   @db.VarChar(500)
+  sourceUrl     String?   @db.VarChar(2000)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  show          TVShow    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  provider      Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  streams       Stream[]
+  subtitles     Subtitle[]
+
+  @@unique([showId, providerId])
+  @@index([showId])
+  @@index([providerId])
+}
+
+model EpisodeProvider {
+  id            String    @id @default(uuid())
+  episodeId     String
+  providerId    String
+  externalId    String?   @db.VarChar(255)
+  sourceTitle   String?   @db.VarChar(500)
+  sourceUrl     String?   @db.VarChar(2000)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  episode       Episode   @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  provider      Provider  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  streams       Stream[]
+  subtitles     Subtitle[]
+
+  @@unique([episodeId, providerId])
+  @@index([episodeId])
+  @@index([providerId])
+}
+
+model Stream {
+  id                 String            @id @default(uuid())
+  movieProviderId    String?
+  episodeProviderId  String?
+  showProviderId     String?
+  quality            String            @db.VarChar(100)
+  codec              String?           @db.VarChar(100)
+  language           String?           @db.VarChar(50)
+  serverName         String?           @db.VarChar(255)
+  streamUrl          String            @db.VarChar(2000)
+  isDefault          Boolean           @default(false)
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  movieProvider      MovieProvider?    @relation(fields: [movieProviderId], references: [id], onDelete: Cascade)
+  episodeProvider    EpisodeProvider?  @relation(fields: [episodeProviderId], references: [id], onDelete: Cascade)
+  showProvider       TVShowProvider?   @relation(fields: [showProviderId], references: [id], onDelete: Cascade)
+
+  @@index([movieProviderId])
+  @@index([episodeProviderId])
+  @@index([showProviderId])
+  @@index([isActive])
+  @@index([quality])
+  @@index([language])
+}
+
+model Subtitle {
+  id                 String            @id @default(uuid())
+  movieProviderId    String?
+  episodeProviderId  String?
+  showProviderId     String?
+  language           String            @db.VarChar(50)
+  format             String            @db.VarChar(20)
+  url                String            @db.VarChar(2000)
+  isDefault          Boolean           @default(false)
+  // Set only for subtitles resolved through OpenSubtitles (see OpenSubtitlesService) - their
+  // download links expire quickly, so `url` here points at this backend's own stable
+  // /subtitles/:id/resolve redirect instead of a temporary OpenSubtitles link. That endpoint
+  // re-resolves a fresh download link from OpenSubtitles using this file id every time the app
+  // actually calls it, rather than this server ever downloading/storing the subtitle file
+  // itself. Manually admin-added subtitles leave this null and use `url` directly as-is.
+  externalFileId     String?           @db.VarChar(255)
+  // Last real OpenSubtitles download link resolved for externalFileId, plus when. Used two
+  // ways: (1) skip re-resolving (and burning OpenSubtitles' daily download quota) if the cached
+  // link is still within RESOLVE_CACHE_TTL of subtitles.controller.ts; (2) serve as a fallback
+  // when a fresh resolve fails (quota exhausted, network error) so playback still gets *a*
+  // working link instead of the resolve endpoint redirecting to itself - the actual cause of
+  // subtitles silently never appearing in the app despite the row existing.
+  resolvedUrl        String?           @db.VarChar(2000)
+  // The actual subtitle file contents, fetched once and kept forever. OpenSubtitles' free-tier
+  // key gets an observed daily *download* quota in the single digits (~5-10), completely
+  // separate from - and far smaller than - its search quota; re-resolving the same file every
+  // RESOLVE_CACHE_TTL (6h) burns a fresh unit each time, so a handful of viewers spread across
+  // one day already exhausts it and every other title 502s until the quota resets at UTC
+  // midnight. Since resolveDownloadLink's link is the only quota-limited step - fetching the
+  // text from it isn't - persisting that text here means each externalFileId ever costs the
+  // quota exactly once, for its entire lifetime, not once per cache window.
+  resolvedContent    String?
+  // Computed once, automatically, by audioSyncAnalysisService.ts right after this row is
+  // created (import/hash-match/manual upload - see its own call sites) - the same two-point
+  // audio-vs-cue correlation the app's own in-player auto-sync button runs on a viewer's device,
+  // just run here once so every viewer gets a correctly-synced subtitle by default instead of
+  // each one having to discover and locally work around the same mismatch independently (see
+  // SyncIssue's own comment for the reactive, per-viewer alternative this exists to avoid needing
+  // as often). The app applies these unless the viewer has already saved their own local
+  // override for this exact title (see VideoPlayer.tsx).
+  defaultOffsetMs    Int               @default(0)
+  defaultSpeed       Float             @default(1)
+  // "pending" until the (fire-and-forget, can take a minute or two) analysis finishes -
+  // "done"/"failed" after. Lets the admin panel show real status instead of a defaultOffsetMs of
+  // 0 being ambiguous with "analyzed and genuinely no correction needed."
+  syncAnalysisStatus String            @default("pending") @db.VarChar(20)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  movieProvider      MovieProvider?    @relation(fields: [movieProviderId], references: [id], onDelete: Cascade)
+  episodeProvider    EpisodeProvider?  @relation(fields: [episodeProviderId], references: [id], onDelete: Cascade)
+  showProvider       TVShowProvider?   @relation(fields: [showProviderId], references: [id], onDelete: Cascade)
+
+  @@index([movieProviderId])
+  @@index([episodeProviderId])
+  @@index([showProviderId])
+  @@index([language])
+  @@index([isDefault])
+}
+
+// One row per movie/episode, upserted (not appended) each time the app's own audio-sync feature
+// confidently detects a real timing mismatch on a device (see VideoPlayer.tsx's onAutoSync) -
+// "أعمال ترجمتها غير متطابقة" (works whose subtitle doesn't match), surfaced in the admin panel's
+// own dedicated tab so an admin can fix the underlying subtitle once (upload/hash-match) instead
+// of every viewer silently working around it locally. `resolved` is cleared back to false on any
+// new report even after being marked resolved once - a repeat complaint after a fix means the fix
+// didn't actually hold (or was for a different release), not that it's safe to ignore again.
+model SyncIssue {
+  id              String   @id @default(uuid())
+  movieId         String?  @unique
+  episodeId       String?  @unique
+  offsetMs        Int
+  speed           Float    @default(1)
+  reportCount     Int      @default(1)
+  firstReportedAt DateTime @default(now())
+  lastReportedAt  DateTime @updatedAt
+  resolved        Boolean  @default(false)
+
+  movie           Movie?   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episode         Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([resolved])
+}
+
+model Genre {
+  id            String           @id @default(uuid())
+  tmdbId        String?          @unique
+  name          String           @unique @db.VarChar(255)
+  slug          String           @unique @db.VarChar(255)
+
+  movies        MovieGenre[]
+  shows         TVShowGenre[]
+
+  @@index([name])
+}
+
+model Collection {
+  id            String    @id @default(uuid())
+  tmdbId        String?   @unique
+  title         String    @db.VarChar(500)
+  overview      String?   @db.Text
+  poster        String?   @db.VarChar(1000)
+  backdrop      String?   @db.VarChar(1000)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  movies        Movie[]
+
+  @@index([title])
+}
+
+model Person {
+  id            String               @id @default(uuid())
+  tmdbId        String?              @unique
+  name          String               @db.VarChar(500)
+  birthday      DateTime?
+  deathday      DateTime?
+  biography     String?              @db.Text
+  // Gemini-translated from `biography` - TMDB itself rarely has an Arabic translation for a
+  // person's biography specifically (unlike a movie's own title/overview, which usually does).
+  biographyAr   String?              @db.Text
+  // TMDB's own free-text field (e.g. "Los Angeles, California, USA") - not normalized to a
+  // Country row like Movie/TVShow's own production countries, since a person's birthplace is
+  // display-only here and TMDB doesn't return it in a structured form worth splitting up.
+  placeOfBirth  String?              @db.VarChar(500)
+  photo         String?              @db.VarChar(1000)
+  popularity    Decimal?             @db.Decimal(10, 2)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  movieCast     MovieCastMember[]
+  movieCrew     MovieCrewMember[]
+  showCast      TVShowCastMember[]
+  showCrew      TVShowCrewMember[]
+
+  @@index([name])
+  @@index([popularity])
+}
+
+model Company {
+  id            String    @id @default(uuid())
+  tmdbId        String?   @unique
+  name          String    @db.VarChar(500)
+  logo          String?   @db.VarChar(1000)
+  country       String?   @db.VarChar(100)
+  homepage      String?   @db.VarChar(1000)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  movies        MovieCompany[]
+  shows         TVShowCompany[]
+
+  @@index([name])
+}
+
+model Country {
+  id            String    @id @default(uuid())
+  isoCode       String    @unique @db.VarChar(10)
+  name          String    @db.VarChar(255)
+  nativeName    String?   @db.VarChar(255)
+
+  movies        MovieCountry[]
+  shows         TVShowCountry[]
+
+  @@index([name])
+}
+
+model Language {
+  id            String    @id @default(uuid())
+  isoCode       String    @unique @db.VarChar(10)
+  englishName   String    @db.VarChar(255)
+  nativeName    String?   @db.VarChar(255)
+  rtl           Boolean   @default(false)
+
+  movies        MovieLanguage[]
+  shows         TVShowLanguage[]
+
+  @@index([englishName])
+}
+
+model Image {
+  id            String        @id @default(uuid())
+  movieId       String?
+  showId        String?
+  type          ImageTypeEnum
+  width         Int?
+  height        Int?
+  url           String        @db.VarChar(2000)
+  provider      String        @db.VarChar(255)
+  createdAt     DateTime      @default(now())
+
+  movie         Movie?        @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  show          TVShow?       @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([movieId])
+  @@index([showId])
+  @@index([type])
+}
+
+model ImportJob {
+  id            String           @id @default(uuid())
+  providerId    String
+  status        ImportStatusEnum @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  processed     Int              @default(0)
+  failed        Int              @default(0)
+  logs          String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  provider      Provider         @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SyncJob {
+  id               String        @id @default(uuid())
+  providerId       String
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  status           SyncStatusEnum @default(PENDING)
+  newMovies        Int            @default(0)
+  updatedMovies    Int            @default(0)
+  failedMovies     Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  provider         Provider       @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model User {
+  id            String           @id @default(uuid())
+  email         String           @unique @db.VarChar(320)
+  username      String           @unique @db.VarChar(255)
+  passwordHash  String           @db.VarChar(500)
+  roleId        String
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  role          Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  favorites     Favorite[]
+  watchHistory  WatchHistory[]
+  continueWatching ContinueWatching[]
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+  @@index([username])
+  @@index([isActive])
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid())
+  userId        String
+  tokenHash     String    @db.VarChar(255)
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+model Role {
+  id            String      @id @default(uuid())
+  name          UserRoleEnum @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  users         User[]
+}
+
+model Favorite {
+  id            String    @id @default(uuid())
+  userId        String
+  movieId       String?
+  showId        String?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie         Movie?    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  show          TVShow?   @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([movieId])
+  @@index([showId])
+}
+
+model WatchHistory {
+  id            String    @id @default(uuid())
+  userId        String
+  movieId       String?
+  episodeId     String?
+  showId        String?
+  position      Int       @default(0)
+  duration      Int       @default(0)
+  lastWatched   DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie         Movie?    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episode       Episode?  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  show          TVShow?   @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([movieId])
+  @@index([episodeId])
+  @@index([lastWatched])
+}
+
+model ContinueWatching {
+  id            String    @id @default(uuid())
+  userId        String
+  movieId       String?
+  episodeId     String?
+  showId        String?
+  position      Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie         Movie?    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episode       Episode?  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  show          TVShow?   @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([movieId])
+  @@index([episodeId])
+}
+
+model Setting {
+  id            String        @id @default(uuid())
+  key           String        @unique @db.VarChar(255)
+  value         String        @db.Text
+  type          SettingTypeEnum @default(STRING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([key])
+}
+
+model MovieGenre {
+  movieId   String
+  genreId   String
+
+  movie     Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre     Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, genreId])
+  @@index([genreId])
+}
+
+model TVShowGenre {
+  showId    String
+  genreId   String
+
+  show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
+  genre     Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([showId, genreId])
+  @@index([genreId])
+}
+
+model MovieCompany {
+  movieId   String
+  companyId String
+
+  movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, companyId])
+  @@index([companyId])
+}
+
+model TVShowCompany {
+  showId    String
+  companyId String
+
+  show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([showId, companyId])
+  @@index([companyId])
+}
+
+model MovieCountry {
+  movieId   String
+  countryId String
+
+  movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, countryId])
+  @@index([countryId])
+}
+
+model TVShowCountry {
+  showId    String
+  countryId String
+
+  show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
+  country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@id([showId, countryId])
+  @@index([countryId])
+}
+
+model MovieLanguage {
+  movieId    String
+  languageId String
+
+  movie      Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, languageId])
+  @@index([languageId])
+}
+
+model TVShowLanguage {
+  showId     String
+  languageId String
+
+  show       TVShow   @relation(fields: [showId], references: [id], onDelete: Cascade)
+  language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@id([showId, languageId])
+  @@index([languageId])
+}
+
+model MovieCastMember {
+  movieId   String
+  personId  String
+  character String? @db.VarChar(500)
+  order     Int     @default(0)
+
+  movie     Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, personId])
+  @@index([personId])
+  @@index([order])
+}
+
+model MovieCrewMember {
+  movieId   String
+  personId  String
+  role      String  @db.VarChar(100)
+
+  movie     Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, personId, role])
+  @@index([personId])
+  @@index([role])
+}
+
+model TVShowCastMember {
+  showId    String
+  personId  String
+  character String? @db.VarChar(500)
+  order     Int     @default(0)
+
+  show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
+  person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([showId, personId])
+  @@index([personId])
+  @@index([order])
+}
+
+model TVShowCrewMember {
+  showId    String
+  personId  String
+  role      String  @db.VarChar(100)
+
+  show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
+  person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([showId, personId, role])
+  @@index([personId])
+  @@index([role])
+}
+

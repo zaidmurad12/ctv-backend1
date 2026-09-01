@@ -1,0 +1,459 @@
+# Engineering Rules
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the mandatory engineering rules that every contributor,
+AI assistant, and developer must follow while working on the CTV Platform.
+
+These rules are mandatory.
+
+Violation of these rules is considered a project defect.
+
+---
+
+# General Principles
+
+Write production-ready code.
+
+Never write demo code.
+
+Never write placeholder implementations.
+
+Never leave TODOs unless explicitly requested.
+
+Never leave incomplete features.
+
+---
+
+# Architecture
+
+Always follow Clean Architecture.
+
+Never bypass architecture layers.
+
+Never introduce circular dependencies.
+
+Never place business logic inside Controllers.
+
+Never place business logic inside Providers.
+
+Core must remain completely independent.
+
+---
+
+# Dependency Rules
+
+Allowed
+
+Application
+
+↓
+
+Core
+
+↓
+
+Interfaces
+
+↓
+
+Infrastructure
+
+Forbidden
+
+Infrastructure
+
+↓
+
+Core Implementation
+
+Forbidden
+
+Provider
+
+↓
+
+Provider
+
+Forbidden
+
+Android
+
+↓
+
+Database
+
+Forbidden
+
+Android
+
+↓
+
+Provider
+
+---
+
+# Coding Standards
+
+Use TypeScript Strict Mode.
+
+Never use "any".
+
+Never disable TypeScript errors.
+
+Never suppress compiler warnings.
+
+Every public method must have explicit return types.
+
+---
+
+# File Size
+
+Maximum file length
+
+500 lines
+
+Preferred
+
+300 lines
+
+If exceeded
+
+Split the file.
+
+---
+
+# Function Size
+
+Maximum
+
+50 lines
+
+Preferred
+
+20 lines
+
+Functions must do one thing only.
+
+---
+
+# Class Size
+
+Single Responsibility Principle.
+
+If a class has multiple responsibilities
+
+Split it.
+
+---
+
+# Naming
+
+Use descriptive names.
+
+Avoid abbreviations.
+
+Good
+
+MovieImportService
+
+Bad
+
+MIS
+
+Good
+
+SubtitleRepository
+
+Bad
+
+SubRepo
+
+---
+
+# Comments
+
+Write self-explanatory code.
+
+Comment only when necessary.
+
+Never explain obvious code.
+
+---
+
+# Error Handling
+
+Never ignore exceptions.
+
+Never return null.
+
+Use Result objects.
+
+Log every unexpected failure.
+
+---
+
+# Logging
+
+Every important operation must log
+
+Correlation ID
+
+Execution Time
+
+Result
+
+Errors
+
+Context
+
+Never log
+
+Passwords
+
+Tokens
+
+Cookies
+
+Secrets
+
+---
+
+# Database Rules
+
+Only repositories access Prisma.
+
+No SQL inside services.
+
+No raw SQL unless approved.
+
+Always use transactions where required.
+
+---
+
+# Provider Rules
+
+Providers must
+
+Be stateless
+
+Implement ProviderInterface
+
+Never access Database
+
+Never call other Providers
+
+Never implement business logic
+
+---
+
+# API Rules
+
+Always validate input.
+
+Always validate DTOs.
+
+Always return standardized responses.
+
+Never expose internal errors.
+
+Version every public API.
+
+---
+
+# Android Rules
+
+UI never contains business logic.
+
+Use ViewModels.
+
+Use immutable state.
+
+Avoid unnecessary recomposition.
+
+Images must be lazy loaded.
+
+---
+
+# Performance Rules
+
+Never block the main thread.
+
+Heavy work belongs in background workers.
+
+Cache expensive operations.
+
+Avoid duplicate requests.
+
+Use pagination.
+
+Avoid N+1 queries.
+
+---
+
+# Security Rules
+
+Never hardcode secrets.
+
+Always validate permissions.
+
+Always sanitize input.
+
+Always use HTTPS.
+
+Never expose provider credentials.
+
+---
+
+# Testing Rules
+
+Every new feature requires tests.
+
+Every bug fix requires regression tests.
+
+No feature is complete without tests.
+
+---
+
+# Git Rules
+
+Small commits.
+
+Descriptive commit messages.
+
+One feature per branch.
+
+No direct commits to main.
+
+---
+
+# Documentation Rules
+
+Every module must be documented.
+
+Every public API documented.
+
+Architecture changes require documentation updates.
+
+---
+
+# AI Development Rules
+
+Before writing code
+
+Read all specification files.
+
+Never guess architecture.
+
+Never invent endpoints.
+
+Never invent database fields.
+
+Never invent API responses.
+
+Never invent providers.
+
+Follow the specification exactly.
+
+If information is missing
+
+Stop and ask.
+
+Do not assume.
+
+---
+
+# Code Generation Rules
+
+Generate complete implementations.
+
+Do not generate placeholders.
+
+Do not omit validation.
+
+Do not omit logging.
+
+Do not omit tests.
+
+Do not omit error handling.
+
+Generate production-ready code only.
+
+---
+
+# Refactoring Rules
+
+Improve readability.
+
+Reduce duplication.
+
+Maintain backward compatibility.
+
+Do not change public behavior without approval.
+
+---
+
+# Quality Gates
+
+Code is accepted only if
+
+Compiles successfully.
+
+Lint passes.
+
+Tests pass.
+
+Architecture respected.
+
+Performance acceptable.
+
+Security validated.
+
+Documentation updated.
+
+---
+
+# Definition of Done
+
+A feature is complete only if
+
+✓ Fully implemented.
+
+✓ Tested.
+
+✓ Documented.
+
+✓ Logged.
+
+✓ Error handling implemented.
+
+✓ Validation implemented.
+
+✓ Performance acceptable.
+
+✓ Security reviewed.
+
+✓ Ready for production.
+
+---
+
+# Absolute Rules
+
+Never break Clean Architecture.
+
+Never bypass Core.
+
+Never bypass Repository Layer.
+
+Never write temporary solutions.
+
+Never sacrifice maintainability for speed.
+
+Never generate code that you would not deploy to production.
+
+Always prefer long-term maintainability over short-term convenience.

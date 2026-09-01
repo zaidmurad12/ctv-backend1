@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+apps/android-tv/.jdk
+apps/android-tv/.gradle
+apps/android-tv/.kotlin
+apps/android-tv/app/build
+apps/android-tv/build
+.git
+.claude
+*.md

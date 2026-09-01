@@ -1,0 +1,137 @@
+import { Injectable } from '@nestjs/common';
+import type { PrismaDatabaseClient } from '@ctv-platform/infrastructure';
+import { PrismaService } from '../../prisma/prismaService.js';
+import type {
+  EpisodeDetailDto,
+  EpisodeSummaryDto,
+  SeasonDetailDto,
+  StreamResponseDto,
+  SubtitleResponseDto,
+} from '../dto.js';
+
+@Injectable()
+export class SeasonQueryRepository {
+  private readonly prisma: PrismaDatabaseClient;
+
+  constructor(prismaService: PrismaService) {
+    this.prisma = prismaService.client;
+  }
+
+  async findById(id: string): Promise<SeasonDetailDto | null> {
+    const row = await this.prisma.season.findUnique({ where: { id } });
+    if (!row) {
+      return null;
+    }
+    const episodes = await this.listEpisodes(id);
+    return {
+      id: row.id,
+      seasonNumber: row.seasonNumber,
+      name: row.name,
+      overview: row.overview,
+      episodeCount: row.episodeCount,
+      poster: row.poster,
+      airDate: row.airDate ? row.airDate.toISOString() : null,
+      episodes,
+    };
+  }
+
+  async listEpisodes(seasonId: string): Promise<EpisodeSummaryDto[]> {
+    const rows = await this.prisma.episode.findMany({
+      where: { seasonId },
+      include: { providers: { include: { streams: true } } },
+      orderBy: { episodeNumber: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      episodeNumber: row.episodeNumber,
+      title: row.title,
+      titleAr: row.titleAr,
+      overview: row.overview,
+      overviewAr: row.overviewAr,
+      runtime: row.runtime,
+      stillImage: row.stillImage,
+      airDate: row.airDate ? row.airDate.toISOString() : null,
+      hasPlayableStream: row.providers.some((p) => p.streams.some((s) => s.isActive)),
+    }));
+  }
+}
+
+@Injectable()
+export class EpisodeQueryRepository {
+  private readonly prisma: PrismaDatabaseClient;
+
+  constructor(prismaService: PrismaService) {
+    this.prisma = prismaService.client;
+  }
+
+  async findById(id: string): Promise<EpisodeDetailDto | null> {
+    const row = await this.prisma.episode.findUnique({ where: { id } });
+    if (!row) {
+      return null;
+    }
+    const [streams, subtitles] = await Promise.all([this.listStreams(id), this.listSubtitles(id)]);
+    return {
+      id: row.id,
+      episodeNumber: row.episodeNumber,
+      title: row.title,
+      titleAr: row.titleAr,
+      overview: row.overview,
+      overviewAr: row.overviewAr,
+      runtime: row.runtime,
+      stillImage: row.stillImage,
+      hasPlayableStream: streams.length > 0,
+      streams,
+      subtitles,
+    };
+  }
+
+  async listStreams(episodeId: string): Promise<StreamResponseDto[]> {
+    const rows = await this.prisma.stream.findMany({
+      where: { isActive: true, episodeProvider: { episodeId } },
+      orderBy: { isDefault: 'desc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      quality: row.quality,
+      codec: row.codec,
+      language: row.language,
+      serverName: row.serverName ?? '',
+      streamUrl: row.streamUrl,
+      isDefault: row.isDefault,
+    }));
+  }
+
+  async listSubtitles(episodeId: string): Promise<SubtitleResponseDto[]> {
+    const rows = await this.prisma.subtitle.findMany({ where: { episodeProvider: { episodeId } } });
+    return rows.map((row) => ({
+      id: row.id,
+      language: row.language,
+      format: row.format,
+      url: row.url,
+      isDefault: row.isDefault,
+      defaultOffsetMs: row.defaultOffsetMs,
+      defaultSpeed: row.defaultSpeed,
+    }));
+  }
+
+  /** The show title + season/episode numbers a live provider needs to resolve this episode — see ProviderStreamResolver. */
+  async findResolutionContext(
+    episodeId: string,
+  ): Promise<{ showTitle: string; seasonNumber: number; episodeNumber: number } | null> {
+    const row = await this.prisma.episode.findUnique({
+      where: { id: episodeId },
+      select: {
+        episodeNumber: true,
+        season: { select: { seasonNumber: true, show: { select: { title: true } } } },
+      },
+    });
+    if (!row) {
+      return null;
+    }
+    return {
+      showTitle: row.season.show.title,
+      seasonNumber: row.season.seasonNumber,
+      episodeNumber: row.episodeNumber,
+    };
+  }
+}

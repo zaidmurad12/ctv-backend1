@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'apps/admin/Dockerfile'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/ctv-platform-admin'
+      - '.'
+images:
+  - 'gcr.io/$PROJECT_ID/ctv-platform-admin'

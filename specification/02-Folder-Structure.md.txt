@@ -1,0 +1,661 @@
+# Folder Structure
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document defines the official repository structure of the CTV Platform.
+
+Every file in the project must belong to one of the directories defined in this document.
+
+No folder should be created unless explicitly approved by the architecture documentation.
+
+---
+
+# Root Structure
+
+```
+CTV-Platform/
+
+apps/
+core/
+providers/
+packages/
+services/
+tools/
+storage/
+docs/
+docker/
+scripts/
+specification/
+
+package.json
+turbo.json
+README.md
+.env.example
+.gitignore
+```
+
+---
+
+# apps
+
+Contains all executable applications.
+
+```
+apps/
+
+backend/
+admin/
+android-tv/
+```
+
+---
+
+## backend
+
+Responsible for exposing the REST API.
+
+Contains
+
+```
+backend/
+
+src/
+
+controllers/
+services/
+dto/
+middlewares/
+guards/
+filters/
+interceptors/
+modules/
+
+main.ts
+app.module.ts
+```
+
+---
+
+## admin
+
+Administration Dashboard.
+
+Contains
+
+```
+admin/
+
+src/
+
+pages/
+components/
+layouts/
+hooks/
+services/
+styles/
+assets/
+```
+
+---
+
+## android-tv
+
+Android TV Application.
+
+Contains
+
+```
+android-tv/
+
+app/
+
+screens/
+components/
+navigation/
+player/
+hooks/
+services/
+theme/
+assets/
+```
+
+---
+
+# core
+
+Business Logic.
+
+Core MUST NOT depend on any Provider.
+
+```
+core/
+
+catalog/
+metadata/
+stream/
+subtitle/
+search/
+recommendation/
+sync/
+scheduler/
+queue/
+auth/
+```
+
+Every module contains
+
+```
+entities/
+interfaces/
+services/
+repositories/
+events/
+validators/
+types/
+```
+
+---
+
+# providers
+
+External Systems.
+
+Every provider implements ProviderInterface.
+
+```
+providers/
+
+cinemana/
+tmdb/
+```
+
+Future
+
+```
+providers/
+
+jellyfin/
+plex/
+custom/
+```
+
+Each provider contains
+
+```
+api/
+client/
+mapper/
+models/
+services/
+types/
+```
+
+---
+
+# packages
+
+Reusable packages.
+
+```
+packages/
+
+config/
+database/
+logger/
+sdk/
+types/
+common/
+```
+
+---
+
+## config
+
+Environment loading.
+
+---
+
+## database
+
+Prisma
+
+Database Client
+
+Repositories
+
+---
+
+## logger
+
+Application logging.
+
+---
+
+## sdk
+
+Reusable SDK used by applications.
+
+---
+
+## types
+
+Shared TypeScript types.
+
+---
+
+## common
+
+Utilities
+
+Constants
+
+Helpers
+
+Exceptions
+
+Decorators
+
+---
+
+# services
+
+Background services.
+
+```
+services/
+
+importer/
+scraper/
+transcoder/
+```
+
+---
+
+## importer
+
+Responsible for importing content.
+
+```
+importer/
+
+jobs/
+workers/
+queues/
+scheduler/
+```
+
+---
+
+## scraper
+
+Reverse engineering tools.
+
+```
+scraper/
+
+browser/
+network/
+extractor/
+javascript/
+```
+
+---
+
+## transcoder
+
+Reserved for future media processing.
+
+---
+
+# tools
+
+Development tools.
+
+```
+tools/
+
+inspector/
+api-discovery/
+endpoint-tester/
+migration/
+```
+
+---
+
+## inspector
+
+Playwright tools.
+
+Network inspection.
+
+API discovery.
+
+---
+
+## api-discovery
+
+Automatic endpoint analysis.
+
+---
+
+## endpoint-tester
+
+API validation.
+
+---
+
+## migration
+
+Migration utilities.
+
+---
+
+# storage
+
+Persistent files.
+
+```
+storage/
+
+cache/
+posters/
+backdrops/
+logos/
+subtitles/
+trailers/
+logs/
+reports/
+```
+
+---
+
+# docs
+
+Human documentation.
+
+```
+docs/
+
+architecture/
+database/
+api/
+roadmap/
+```
+
+---
+
+# docker
+
+Docker configuration.
+
+```
+docker/
+
+backend/
+database/
+nginx/
+```
+
+---
+
+# scripts
+
+Automation scripts.
+
+```
+scripts/
+
+install/
+backup/
+restore/
+seed/
+sync/
+maintenance/
+```
+
+---
+
+# specification
+
+Engineering documentation.
+
+```
+specification/
+
+00-Project-Overview.md
+
+01-System-Architecture.md
+
+02-Folder-Structure.md
+
+03-Technology-Stack.md
+
+04-Database-Design.md
+
+05-Provider-Architecture.md
+
+06-Cinemana-Reverse-Engineering.md
+
+07-TMDB-Integration.md
+
+08-Import-Pipeline.md
+
+09-Backend-API.md
+
+10-Android-TV.md
+
+11-Admin-Dashboard.md
+
+12-Security.md
+
+13-Performance.md
+
+14-Testing.md
+
+15-Engineering-Rules.md
+
+16-Implementation-Roadmap.md
+
+CLAUDE_MASTER_PROMPT.md
+```
+
+---
+
+# Naming Convention
+
+Folders
+
+lowercase
+
+Example
+
+```
+providers
+
+backend
+
+scheduler
+```
+
+---
+
+Files
+
+camelCase
+
+Example
+
+```
+movieService.ts
+
+searchController.ts
+```
+
+---
+
+Classes
+
+PascalCase
+
+Example
+
+```
+MovieService
+
+CatalogImporter
+
+SearchEngine
+```
+
+---
+
+Interfaces
+
+Prefix I
+
+Example
+
+```
+IProvider
+
+IMovieRepository
+```
+
+---
+
+Enums
+
+Suffix Enum
+
+```
+MovieStatusEnum
+
+ProviderTypeEnum
+```
+
+---
+
+DTO
+
+Suffix Dto
+
+```
+CreateMovieDto
+
+SearchMovieDto
+```
+
+---
+
+Repository
+
+Suffix Repository
+
+```
+MovieRepository
+```
+
+---
+
+Service
+
+Suffix Service
+
+```
+SearchService
+
+SubtitleService
+```
+
+---
+
+Controller
+
+Suffix Controller
+
+```
+MovieController
+```
+
+---
+
+Module
+
+Suffix Module
+
+```
+MovieModule
+```
+
+---
+
+# Folder Rules
+
+Every module must own its files.
+
+Cross-module imports are allowed only through public interfaces.
+
+No circular dependencies.
+
+No business logic inside controllers.
+
+No Prisma usage outside repositories.
+
+Providers never communicate with each other.
+
+Core never imports Provider implementations.
+
+Android never communicates directly with Providers.
+
+Admin never communicates directly with Providers.
+
+All communication happens through Backend API.
+
+---
+
+# Ownership
+
+apps
+
+Presentation
+
+core
+
+Business Logic
+
+providers
+
+External APIs
+
+packages
+
+Shared Code
+
+services
+
+Background Processing
+
+storage
+
+Files
+
+tools
+
+Development
+
+specification
+
+Project Specification
+
+---
+
+# Repository Rule
+
+Every file inside the repository must belong to one of the folders defined in this document.
+
+Creating additional root folders requires updating this specification first.

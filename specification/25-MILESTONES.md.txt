@@ -1,0 +1,416 @@
+# CTV Platform — Development Milestones
+
+Version: 1.0
+
+Status: Active
+
+---
+
+# Purpose
+
+This document defines the major development milestones of the CTV Platform.
+
+Unlike the implementation roadmap, milestones represent engineering goals that can be independently completed, reviewed, and approved before work continues.
+
+Every milestone consists of multiple sprints.
+
+A milestone is considered complete only after:
+
+- Implementation
+- Verification
+- Documentation update
+- Architecture review
+- Approval
+
+---
+
+# Milestone 1
+
+## Core Domain
+
+Status:
+✅ Completed
+
+Objective:
+
+Build the complete business domain without infrastructure.
+
+Scope:
+
+- Domain Entities
+- Value Objects
+- Domain Events
+- Repository Interfaces
+- Use Cases
+- Validators
+- Domain Services
+
+Deliverables:
+
+✓ Pure TypeScript
+
+✓ No Prisma
+
+✓ No Database
+
+✓ No Providers
+
+✓ No HTTP
+
+---
+
+# Milestone 2
+
+## Infrastructure
+
+Status:
+✅ Completed
+
+Objective:
+
+Implement infrastructure required by the Domain.
+
+Scope:
+
+- Prisma
+- PostgreSQL
+- Redis
+- BullMQ
+- Repository Implementations
+- Transactions
+- Caching
+
+Deliverables:
+
+✓ Infrastructure only
+
+Implemented in `packages/infrastructure`: generated Prisma client, a
+Prisma <-> domain mapping layer, Prisma-backed repositories for Movie/TVShow/
+Season/Episode, a transactional `PrismaUnitOfWork`, a Redis-backed cache
+client, a BullMQ-backed queue client, database/Redis health checks, and a
+dependency-injection composition root registering all of the above as
+singletons. See `specification/24-AI-Memory.md.txt` (Milestone 2 Update) for
+the full deliverable list and known gaps, and `packages/infrastructure/README.md`
+for usage.
+
+---
+
+# Milestone 3
+
+## Provider Framework
+
+Status:
+✅ Completed
+
+Objective:
+
+Build the provider abstraction layer.
+
+Scope:
+
+- Provider SDK
+- Provider Registry
+- Provider Health
+- Provider Config
+- Provider Discovery
+- Retry Policy
+
+Deliverables:
+
+✓ Generic Provider Framework
+
+Implemented in `packages/sdk` (`@ctv-platform/sdk`): `ProviderInterface`,
+external DTO contracts, an `AbstractProvider` base class (capability gating,
+rate limiting, retries with authentication refresh, structured logging),
+`ProviderError`/`ProviderResult`, `ProviderRegistry` (register/factory/
+resolve/discover by capability), and `ProviderLifecycleManager` (Registered
+-> Health Check -> Available). No concrete provider (Cinemana/TMDB) is part
+of this milestone — see `specification/24-AI-Memory.md.txt` (Milestone 3
+Update) for the full deliverable list, and `packages/sdk/README.md` for
+usage.
+
+---
+
+# Milestone 4
+
+## Import Pipeline
+
+Status:
+✅ Completed
+
+Objective:
+
+Implement automated ingestion pipeline.
+
+Scope:
+
+- Discovery
+- Metadata
+- Streams
+- Subtitles
+- Matching
+- Validation
+- Publishing
+
+Deliverables:
+
+✓ Full synchronization pipeline
+
+Implemented in `services/importer` (`@ctv-platform/importer`), a new
+workspace member under the `services/*` glob: a production-ready,
+provider-agnostic ingestion pipeline built entirely on
+`ProviderInterface`/`ProviderRegistry` from Milestone 3 — discovery
+(incremental/full/scheduled/manual), the full TMDB-style matching chain,
+duplicate detection via provider links, metadata enrichment/merge/
+normalization, stream/subtitle/artwork import, validation, and publishing
+(catalog update, cache invalidation, event publishing, search-index-update
+request). Discovery/Import queues, workers, a scheduler, job retry policy,
+a dead letter queue, and metrics round out the operational side. No
+concrete provider (Cinemana/TMDB) exists yet — see
+`specification/24-AI-Memory.md.txt` (Milestone 4 Update) for the full
+deliverable list and documented scope boundaries, and
+`services/importer/README.md` for usage.
+
+---
+
+# Milestone 5
+
+## Backend API
+
+Status:
+✅ Completed
+
+Objective:
+
+Expose application functionality through REST APIs.
+
+Scope:
+
+- Authentication
+- Search
+- Catalog
+- Favorites
+- Watch History
+- Continue Watching
+- Admin APIs
+
+Deliverables:
+
+✓ Production REST API
+
+Implemented in `apps/backend` (`@ctv-platform/backend`), a new NestJS
+workspace member: JWT access/refresh authentication with rotation and
+revocation, role-based authorization (ADMIN/EDITOR/VIEWER), user profile
+management, a read-oriented Catalog API (movies/shows/seasons/episodes) and
+Search API built on new local query repositories, Favorites/Watch History/
+Continue Watching, and Admin APIs (user management, dashboard statistics,
+provider registry inspection). Every endpoint is DTO-validated
+(class-validator), documented via Swagger/OpenAPI at `/api/v1/docs`, and
+returns the standard `{success, data, meta}` / `{success, error}` envelope.
+Depends only on the existing Domain, Infrastructure, SDK, and Import
+Pipeline — no concrete provider (Cinemana/TMDB) was implemented or wired in,
+per an explicit decision to skip unauthorized reverse-engineering of
+Cinemana (see `specification/24-AI-Memory.md.txt`, Milestone 5 Update, for
+the full deliverable list, the DI/`import type` gotcha discovered during
+this milestone, and documented scope boundaries), and `apps/backend/README.md`
+for usage.
+
+---
+
+# Milestone 6
+
+## Admin Dashboard
+
+Status:
+✅ Completed
+
+Objective:
+
+Build administration interface.
+
+Scope:
+
+- Dashboard
+- Jobs
+- Providers
+- Monitoring
+- Users
+- Logs
+- Settings
+
+Deliverables:
+
+✓ Complete Admin UI
+
+Implemented in `apps/admin` (`@ctv-platform/admin`), a new Next.js (Pages
+Router) workspace member using Material UI, TanStack Query, React Hook
+Form, Zod, and Recharts, per `specification/03-Technology-Stack.md.txt`.
+Talks exclusively to `apps/backend` (Milestone 5) over HTTP: JWT login/
+session, RBAC-gated navigation matching the backend's actual `/admin/*`
+enforcement, Movies/TV Shows/Seasons/Episodes browsing with search/sort/
+pagination, Providers (live health + real manual discovery trigger),
+Import Jobs, Synchronization, Health Monitoring, Users (real list/role
+management), Roles & Permissions (reference matrix), Audit Logs, and
+Application Settings. Every list is paginated/filterable/searchable via one
+shared `DataTable` component; every form is Zod-validated; every screen has
+loading/empty/error states, including an explicit "not available yet"
+state (rather than fabricated data) for the several sections the backend
+doesn't implement an endpoint for yet — see
+`specification/24-AI-Memory.md.txt` (Milestone 6 Update) for the full
+deliverable list, the MUI version regression discovered during this
+milestone, and documented scope boundaries, and `apps/admin/README.md`
+for usage.
+
+---
+
+# Milestone 7
+
+## Android TV Application
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Develop Android TV client.
+
+Scope:
+
+- Authentication
+- Home
+- Catalog
+- Details
+- Player
+- Search
+- Settings
+
+Deliverables:
+
+✓ Production Android TV App
+
+---
+
+# Milestone 8
+
+## Optimization
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Optimize performance and scalability.
+
+Scope:
+
+- Cache
+- Search
+- Recommendations
+- Image Optimization
+- Query Optimization
+- Performance Monitoring
+
+Deliverables:
+
+✓ Production Performance
+
+---
+
+# Milestone 9
+
+## Production
+
+Status:
+⬜ Not Started
+
+Objective:
+
+Prepare production deployment.
+
+Scope:
+
+- Docker
+- CI/CD
+- Monitoring
+- Backup
+- Recovery
+- Security Audit
+- Release
+
+Deliverables:
+
+✓ Production Ready Platform
+
+---
+
+# Milestone Workflow
+
+Every milestone follows the same lifecycle:
+
+Planning
+
+↓
+
+Implementation
+
+↓
+
+Verification
+
+↓
+
+Architecture Review
+
+↓
+
+Documentation Update
+
+↓
+
+Approval
+
+↓
+
+Next Milestone
+
+---
+
+# Completion Rules
+
+A milestone is completed only if:
+
+✓ Build passes
+
+✓ Lint passes
+
+✓ TypeScript passes
+
+✓ Tests pass
+
+✓ Documentation updated
+
+✓ AI Memory updated
+
+✓ Architecture approved
+
+✓ Design review completed
+
+Otherwise:
+
+Status = In Progress
+
+---
+
+# Current Progress
+
+| Milestone | Status |
+|------------|--------|
+| 1 | ✅ Completed |
+| 2 | ✅ Completed |
+| 3 | ✅ Completed |
+| 4 | ✅ Completed |
+| 5 | ✅ Completed |
+| 6 | ✅ Completed |
+| 7 | ⬜ Not Started |
+| 8 | ⬜ Not Started |
+| 9 | ⬜ Not Started |

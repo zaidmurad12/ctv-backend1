@@ -1,0 +1,380 @@
+# AI Memory
+## CTV Platform Engineering Specification
+
+Version 1.0
+
+---
+
+# Purpose
+
+This document serves as the cumulative memory file for the CTV Platform.
+
+It should be updated at the end of each implementation phase so that future work remains consistent with the documented architecture, roadmap, and project state.
+
+---
+
+# Project Identity
+
+Project Name
+
+CTV Platform
+
+Purpose
+
+A production-grade Android TV VOD platform that imports content from Cinemana, enriches metadata through TMDB, exposes a backend API, supports an admin dashboard, and delivers a modern Android TV experience.
+
+---
+
+# Current Project State
+
+Repository Status
+
+- The repository contains the intended monorepo structure and documentation scaffold.
+- The engineering foundation for Phase 0 has been established.
+- The project is now prepared for phased implementation with tooling and repository infrastructure in place.
+
+Implementation Status
+
+- The workspace now uses TurboRepo and pnpm workspaces.
+- Shared TypeScript configuration has been added.
+- ESLint, Prettier, Husky, and lint-staged are configured.
+- Docker and Docker Compose foundation files are present.
+- Environment example configuration is available.
+- GitHub Actions CI workflow is configured.
+- Root package scripts are defined for build, lint, format, typecheck, and CI.
+- No production application code has been implemented.
+- No database schema has been created.
+- No provider framework has been implemented.
+- No import pipeline has been implemented.
+- No complete backend API has been implemented.
+- No Android TV application has been implemented.
+
+---
+
+# Source of Truth
+
+All implementation decisions must be derived from the specification set in the specification folder.
+
+The authoritative documents are:
+
+- Project Overview
+- System Architecture
+- Folder Structure
+- Technology Stack
+- Database Design
+- Provider Architecture
+- Cinemana Reverse Engineering
+- TMDB Integration
+- Import Pipeline
+- Backend API
+- Android TV
+- Admin Dashboard
+- Security
+- Performance
+- Testing
+- Engineering Rules
+- Implementation Roadmap
+- Coding Conventions
+- Configuration Reference
+- Claude Master Prompt
+
+---
+
+# Architectural Baseline
+
+The platform is designed around the following decisions:
+
+- Clean Architecture
+- Modular Monolith in Phase 1
+- Provider-based integration model
+- Core independence from external providers
+- Cinemana as the only content source
+- TMDB as a metadata enrichment provider only
+- PostgreSQL and Prisma as the persistence foundation
+- Redis and BullMQ for caching and asynchronous workers
+- REST API as the main client integration contract
+- Android TV and admin dashboard as client applications
+
+---
+
+# Delivery Constraints
+
+The following constraints must remain in effect during all future work:
+
+- Do not invent architecture.
+- Do not invent API endpoints.
+- Do not invent database fields.
+- Do not invent provider behavior.
+- Follow the roadmap in order.
+- Do not begin application implementation before the required foundation is in place.
+- Do not modify the roadmap without explicit approval.
+
+---
+
+# Current Implementation Focus
+
+Milestones 1 (Core Domain), 2 (Infrastructure), 3 (Provider Framework),
+4 (Import Pipeline), 5 (Backend API), and 6 (Admin Dashboard) are complete.
+The next unstarted milestone is Milestone 7 (Android TV Application).
+
+No concrete provider (Cinemana, TMDB) or Android TV implementation should
+be introduced before Milestone 7 begins. A fully
+functional Cinemana provider was explicitly evaluated before Milestone 5
+began and confirmed to require unauthorized reverse-engineering (no
+authorized endpoint, no browser-automation tooling, only a placeholder
+`CINEMANA_BASE_URL` in `.env.example`) — the user directed that Cinemana be
+skipped entirely and Milestone 5 proceed without it. This constraint
+remains in force: **no Cinemana or other unauthorized provider integration
+should ever be built.** Milestone 5's backend API is exercised entirely
+against fakes/injected doubles and the still-empty `ProviderRegistry`; its
+Admin "providers" endpoints correctly return empty lists as a result.
+
+---
+
+# Phase Update Template
+
+Each future phase should update this memory file with:
+
+- Phase name
+- Status
+- Major deliverables completed
+- Architectural decisions validated or clarified
+- Risks or blockers discovered
+- Tests and verification completed
+- Next recommended actions
+
+## Milestone 1 Sprint 1 + Sprint 2 Update
+
+Status: Completed
+
+Major deliverables completed:
+- Added a framework-independent domain package under packages/domain.
+- Implemented domain entities for Movie, TVShow, Season, and Episode.
+- Implemented value objects for Title, Slug, UrlValue, Rating, and Duration.
+- Added repository interfaces for movies, TV shows, seasons, and episodes.
+- Added domain events and domain errors.
+- Introduced EntityBase, AggregateRoot, and ValueObjectBase abstractions.
+- Introduced Result and Either patterns for domain-safe outcomes.
+- Introduced EventBus and DomainEventDispatcher.
+- Introduced factory classes for the core entities.
+- Added a domain-services folder for pure domain behavior.
+- Verified compilation with TypeScript.
+
+Architectural decisions validated:
+- The domain layer remains independent from Prisma, Redis, HTTP, providers, and infrastructure.
+- Domain invariants, validation, and lifecycle behavior are centralized in the domain layer.
+- Shared abstractions now support richer domain patterns without introducing infrastructure concerns.
+
+Verification completed:
+- TypeScript validation passed for the domain package.
+
+Next recommended actions:
+- Review the expanded domain abstractions before moving to infrastructure.
+
+## Milestone 2 Update
+
+Status: Completed
+
+Major deliverables completed:
+- Generated the Prisma Client package from `prisma/schema.prisma` and wired `pnpm db:generate` at the root.
+- Added additive `reconstitute()` factories to the Movie, TVShow, Season, and Episode domain entities so infrastructure can rehydrate aggregates from persisted state without re-running creation invariants. This was the one necessary domain change for this milestone; no existing domain behavior changed.
+- Implemented a Prisma <-> domain mapping layer (`MovieMapper`, `TVShowMapper`, `SeasonMapper`, `EpisodeMapper`) under `packages/infrastructure/src/prisma/mappers`, translating Prisma rows to domain aggregates and back.
+- Implemented `PrismaMovieRepository`, `PrismaTVShowRepository`, `PrismaSeasonRepository`, and `PrismaEpisodeRepository`, replacing the previous stub implementations (which always returned `null`/`[]`). Movie/TVShow reads respect soft-delete (`deletedAt: null`); Season/Episode have no soft-delete column in the schema.
+- Implemented `PrismaUnitOfWork.execute()`, which runs a callback inside a single Prisma `$transaction` and hands it repository instances bound to the transactional client.
+- Implemented a real Redis cache client (`RedisCacheClient`, ioredis-backed) alongside the existing in-memory cache, and a real BullMQ queue client (`BullMQQueueClient`) alongside the existing in-memory queue.
+- Implemented `DatabaseHealthCheck` (`SELECT 1`) and `RedisHealthCheck` (`PING`).
+- Added a dependency-injection composition root (`INFRA_TOKENS`, `registerInfrastructure`, `createInfrastructureContainer`) that registers config, logger, Prisma client, Redis connection, all four repositories, the unit of work, cache client, and health checker as singletons on the existing generic `Container`.
+- Rewrote `packages/infrastructure/src/config/env.ts` to match the variables documented in `specification/18-Configuration-Reference.md.txt` exactly (`REDIS_HOST`/`PORT`/`PASSWORD`/`DB`, `QUEUE_PREFIX`/`CONCURRENCY`/`RETRY`/`TIMEOUT`, `DATABASE_POOL`/`TIMEOUT`/`LOGGING`) instead of the previous ad hoc `REDIS_URL`/`QUEUE_NAME` shape; updated `.env.example` to match.
+- Added 35 unit tests (`node --test`) covering mappers, repositories (against a fake Prisma client), the unit of work, the DI container/composition root, the in-memory cache/queue, and the health checks. `BullMQQueueClient` is intentionally left to integration testing (owns real `bullmq` Queue/Worker instances; requires live Redis).
+- Wired a `test` task into `turbo.json`, a `test`/`db:generate` script into the root `package.json`, and a Prisma-generate + test step into the GitHub Actions CI workflow.
+- Fixed a repo-wide ESLint bug: the core `no-unused-vars` rule (from `js.configs.recommended`) was flagging TypeScript-only constructs (interface method parameters, constructor parameter properties) as unused across every package; it is now disabled in favor of `@typescript-eslint/no-unused-vars` only. This was latent before because no package other than the new infrastructure work exercised `pnpm lint` against files using those constructs.
+- Fixed `packages/infrastructure/tsconfig.json`: it previously path-mapped `@ctv-platform/domain` straight to the domain package's `src`, which violated `rootDir` and had apparently never been typechecked. It now uses a standard TypeScript project reference to `../domain` and resolves the package normally through the workspace symlink and the domain package's built `dist`.
+- Added `.prettierignore` and fixed `.gitignore` (added `dist` and `*.tsbuildinfo`); removed previously-committed `tsconfig.tsbuildinfo` build-cache files from git tracking.
+- Removed a stray debris file (`how --stat HEAD --oneline`, an accidental shell-redirect of a git diff) that was staged before this session began.
+
+Architectural decisions validated:
+- `packages/infrastructure` (not `packages/database`) is the home for Prisma, repositories, caching, queueing, DI, and logging for this project, continuing the precedent already set by the partial Milestone 2 work found at the start of this session. `packages/database`/`config`/`logger` remain empty placeholders.
+- The domain's repository interfaces (`save`/`findById`/`findByTmdbId`/`list`, etc.) are intentionally narrower than the Prisma schema (e.g. `Movie` does not carry `tmdbId` on the aggregate itself). This is treated as an accepted Milestone 1 design decision, not something to fix in Milestone 2.
+
+Known gaps / accepted limitations (documented, not hidden):
+- `Episode` has no `status` column in the schema; `EpisodeMapper` always reports `published` on read and never persists a status. Documented in the mapper and the package README.
+- `BullMQQueueClient`, `RedisCacheClient` in the DI graph, and both health checks are only exercised against fakes/duck-typed doubles in this session's environment, since no live PostgreSQL or Redis was available (no Docker). They compile, typecheck, and are wired correctly; real connectivity should be verified against the `docker-compose.yml` stack before relying on them in an environment with live services.
+- `packages/domain` still has pre-existing Prettier formatting deviations (2-space vs. the spec's stated 4-space convention is actually followed correctly; the deviations are pre-existing files never run through `format:check`). Left untouched as out of scope for Milestone 2; only the one domain file touched this milestone (`entities/content.ts`) was reformatted.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace.
+
+Next recommended actions:
+- Begin Milestone 3 (Provider Framework): Provider SDK, Provider Registry, Provider Health, Provider Config, Provider Discovery, Retry Policy.
+- When real Postgres/Redis are available, run an integration pass against the `docker-compose.yml` stack (`prisma migrate dev`, `BullMQQueueClient`, `RedisCacheClient`, both health checks) before Milestone 3 relies on them.
+
+## Milestone 3 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new `packages/sdk` package, `@ctv-platform/sdk`):
+- `ProviderInterface`: the exact contract from `specification/05-Provider-Architecture.md.txt` (`health`, `discover`, `search`, `movie`, `show`, `season`, `episode`, `streams`, `subtitles`), plus `supports(capability)` for the capability system.
+- External DTO contracts (`dto.ts`): `ProviderMovieDto`, `ProviderShowDto`, `ProviderSeasonDto`, `ProviderEpisodeDto`, `ProviderStreamDto`, `ProviderSubtitleDto`, `ProviderCatalogItemDto`, `ProviderSearchResultDto`, `ProviderArtworkDto` — the fields these carry come directly from the "must extract" lists in `specification/06-Cinemana-Reverse-Engineering.md.txt`.
+- `AbstractProvider`: a template-method base class handling capability gating, rate limiting, retries with authentication refresh, and structured logging uniformly, so a concrete provider only implements the `doHealth`/`doDiscover`/`doSearch`/`doMovie`/`doShow`/`doSeason`/`doEpisode`/`doStreams`/`doSubtitles` primitives.
+- `ProviderError` + `ProviderErrorCodeEnum` (`TIMEOUT`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `INVALID_RESPONSE`, `UNKNOWN_ERROR`, plus an SDK-level `NOT_SUPPORTED` for the capability gate) and `ProviderResult<T> = Result<T, ProviderError>`, reusing `@ctv-platform/domain`'s `Result`/`ok`/`err`/`DomainError` directly rather than re-inventing them.
+- `ProviderStatusEnum` (`HEALTHY`, `UNAVAILABLE`, `MAINTENANCE`, `DISABLED`, `AUTHENTICATION_FAILED`, `RATE_LIMITED`, `UNKNOWN`) — deliberately mirrors the Prisma `ProviderStatusEnum` in `prisma/schema.prisma` value-for-value so a future persistence mapper needs no translation table.
+- `ExponentialBackoffRetryPolicy` + `executeWithRetry`: implements the retry table from specs 05/06 (timeout/rate-limit/unauthorized/unknown retry; forbidden/not-found/invalid-response/not-supported do not), with authentication refresh triggered on `UNAUTHORIZED`.
+- `FixedWindowRateLimiter`: per-provider request throttling with an explicit cooldown gate for `RATE_LIMITED` responses (both clock and sleep are injectable for deterministic tests).
+- `AuthenticationStrategy` + `NoopAuthenticationStrategy`: authentication stays entirely inside the provider (Core/registry never manage it); the no-op strategy is a genuine, valid default for providers using a static API key rather than a login flow.
+- `ProviderRegistry`: register/resolve by id, `registerFactory` for lazy/DI-friendly construction (a provider is only ever built once, on first `resolve()`, never manually with `new`), `list()` sorted by ascending priority, `listByCapability()`.
+- `ProviderLifecycleManager`: drives Registered -> Health Check -> Available, producing a queryable `ProviderLifecycleSnapshot` (status/latency/message) per provider.
+- `createProviderConfig()` (zod-validated `ProviderConfig`: timeout, user agent, rate-limit window, retry settings) — the SDK never reads `process.env` itself; a concrete provider's own package will read its own env vars and pass the resolved values in.
+- 44 unit tests (`node --test`) covering every module above, including an end-to-end `AbstractProvider` test (via a minimal concrete `TestProvider`) exercising capability gating, retry-then-succeed, rate-limiter cooldown reporting, and authentication refresh together.
+- `packages/sdk/README.md` documenting the package.
+
+Architectural decisions validated:
+- `@ctv-platform/sdk` depends only on `@ctv-platform/domain` (for `Result`/`ok`/`err`/`DomainError`/`MediaCategory`). It does **not** depend on `@ctv-platform/infrastructure` — per Architecture Decision 2, Providers are a sibling of Infrastructure (both sit in the Infrastructure Layer), not a consumer of it, so nothing in the provider framework can reach Prisma/Redis/BullMQ even transitively.
+- The SDK defines its own minimal `ProviderLogger` port rather than importing infrastructure's `Logger`. Infrastructure's `ConsoleLogger` already satisfies this shape structurally, so no adapter is needed when a future composition root wires a concrete provider together; this avoids the wrong-direction dependency without duplicating meaningful logic (it's a 4-method interface, not an implementation).
+- `packages/domain` and `packages/infrastructure` (Milestones 1 and 2) were **not modified** in this milestone — confirmed by `git diff --stat` showing changes confined to `packages/sdk/` and the specification files.
+- "Dependency injection integration" for this milestone means the SDK's own classes are fully constructor-injected and never instantiate their dependencies internally by surprise (`ProviderRegistry.registerFactory` is the DI-friendly, lazy-construction path). Wiring a concrete provider into the app's actual `Container` (from `@ctv-platform/infrastructure`) is a composition-root concern that belongs to the milestone that introduces the first concrete provider (Cinemana), since no concrete provider exists yet to wire in.
+- Only one concrete `AbstractProvider` base class was introduced (not several). A metadata-only provider (e.g. TMDB) is expected to simply omit `STREAMS`/`SUBTITLES`/etc. from its `ProviderMetadata.capabilities`; the capability gate then rejects those calls before the provider's own `doStreams`/`doSubtitles` ever runs.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana or TMDB) exists yet — this milestone is exclusively the generic framework, matching the "Generic Provider Framework" deliverable in `specification/25-MILESTONES.md.txt`. Concrete providers are future work (Milestone 4 and/or a dedicated follow-up).
+- The provider framework is not yet wired into any DI composition root or app entry point, since there is nothing concrete to register yet.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure tests + 44 new sdk tests).
+
+Next recommended actions:
+- Begin Milestone 4 (Import Pipeline): Discovery, Metadata, Streams, Subtitles, Matching, Validation, Publishing — the first place a concrete Cinemana provider (and likely TMDB) will be implemented against this framework and registered into a real `ProviderRegistry`.
+
+## Milestone 4 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `services/importer` / `@ctv-platform/importer`, added to `pnpm-workspace.yaml`'s `services/*` glob per `specification/02-Folder-Structure.md.txt`):
+
+- **Discovery**: `DiscoveryEngine` runs Incremental (one page of "what's new" categories), Full (every category, fully paginated), Scheduled (same as Incremental, triggered on a timer), and Manual (same as Full, triggered on demand) discovery against any `ProviderInterface`, deduplicating items and tracking a per-provider checkpoint (`InMemoryDiscoveryCheckpointStore`, process-lifetime — see Known Gaps).
+- **Import Pipeline**: `MovieImportOrchestrator` and `ShowImportOrchestrator` (dispatched by `ImportOrchestrator`) run the full per-item pipeline from `specification/08-Import-Pipeline.md.txt`: fetch -> duplicate check -> TMDB-style match -> metadata enrichment -> merge -> validate -> publish -> import media. `DiscoveryWorker`/`ImportWorker` consume two real queues (`ImportQueues`, built on `@ctv-platform/infrastructure`'s `QueueClient`) — Discovery Queue and Import Queue. `processInBatches` is a concurrency-limited worker-pool batch processor; `ProgressTracker` reports started/finished/stage/percentage.
+- **Matching**: `ContentMatcher` implements the full priority chain from `specification/07-TMDB-Integration.md.txt` (IMDb id -> TMDB id -> exact original title+year -> exact title+year -> normalized Arabic title+year -> fuzzy match, a from-scratch Levenshtein-based similarity, threshold configurable). `MovieDuplicateDetector`/`ShowDuplicateDetector` answer a *different* question — whether this provider's content already exists in our DB, primarily via the `MovieProvider`/`TVShowProvider` join row (the schema's actual "Provider ID: Unique" duplicate-protection key), with TMDB id as a secondary cross-provider safety net. `CanonicalMovieResolver`/`CanonicalShowResolver` resolve to the canonical domain aggregate (existing or newly created, unsaved).
+- **Metadata**: `MetadataEnricher` searches every registered `METADATA_ENRICHMENT`-capability provider and applies the same `ContentMatcher` to find the right entry before downloading full details. `mergeMovieMetadata`/`mergeShowMetadata` apply the "TMDB -> Provider" precedence for overview/artwork while leaving availability/streams/subtitles untouched (content-provider-owned, per spec). `validateMovieMetadata`/`validateShowMetadata` reuse the domain's own `Title`/`UrlValue` value-object validation rather than re-implementing it. `metadataNormalizer.ts` implements real Arabic text normalization (diacritics/tatweel stripping, alef/yaa/taa-marbuta unification).
+- **Media**: `StreamImporter`/`SubtitleImporter`/`ArtworkImporter` validate then persist via new local Prisma-backed repositories (see Persistence below). `imageProcessor.ts` validates and selects artwork URLs (no pixel processing — that's Milestone 8/Sharp).
+- **Validation**: `validateStream`/`validateSubtitle`/`validateMovieForPublish`/`validateShowForPublish`/`validateEpisodeForPublish` implement the exact rules from `specification/08-Import-Pipeline.md.txt` ("Validation Rules"), including "at least one valid stream" as a publish gate for movies/episodes.
+- **Publishing**: `CatalogPublisher` reuses the domain's own `ContentDomainService.publishIfEligible`/`removeIfEligible` (Milestone 1) rather than re-implementing publish rules, then links the aggregate to its provider. `CacheInvalidator` reuses `CacheClient` (Milestone 2). `EventPublisher` reuses `EventBus`/`DomainEventDispatcher` (Milestone 1) to drain and dispatch an entity's pending domain events. `SearchIndexUpdater` publishes a real `ContentIndexUpdateRequestedEvent` via the same event bus — there is no search infrastructure yet (Milestone 8 scope), so this is honest working code for what the milestone can deliver, not a stand-in.
+- **Operations**: `JobRetryPolicy` implements the job-level retry table from `specification/08-Import-Pipeline.md.txt` (timeout/network/rate-limit/provider/authentication retry with backoff; validation errors stop immediately). `DeadLetterQueue` holds exhausted/non-retryable jobs for inspection. `ImportMetrics` tracks the metrics named in the spec (imported movies/shows/episodes/streams/subtitles, failed, retried, average import time). `ImportLogger` enforces the required structured log fields (Import Job ID, Provider, Content Id, Stage, Duration, Status, Error) on top of `Logger` reused directly from `@ctv-platform/infrastructure`.
+- **Persistence (new, local to this package)**: `Provider`, `MovieProvider`/`TVShowProvider`/`EpisodeProvider`, `Stream`, `Subtitle`, and `Image` were never modeled as domain aggregates or given repositories in Milestone 1/2 (out of that scope). `services/importer/src/persistence/` defines local ports and Prisma-backed adapters for them, following Milestone 2's exact mapper/repository conventions, so that neither `packages/domain` nor `packages/infrastructure` needed to change. Two schema-driven decisions: streams reconcile by `streamUrl` (no provider-side stream id column exists) and mark disappeared ones `isActive: false` rather than deleting; subtitles have no `isActive` column at all, so there is no deactivation concept for them.
+- 118 unit/integration/pipeline tests (`node --test`), all against fakes/injected doubles (fake `ProviderInterface`, fake domain repositories, a fake Prisma client mirroring the infrastructure package's own test style, `InMemoryQueueClient` from `@ctv-platform/infrastructure`, injectable clocks/delays) — no network calls, no real database, per the project's testing rules. Includes true end-to-end pipeline tests (`orchestrator.movieImportOrchestrator.test.mjs`, `orchestrator.showImportOrchestrator.test.mjs`) exercising fetch -> match -> enrich -> validate -> publish -> media-import together.
+- `services/importer/README.md` documenting the package, including every scope boundary below.
+
+Architectural decisions validated:
+- `@ctv-platform/importer` depends on `@ctv-platform/domain`, `@ctv-platform/infrastructure`, and `@ctv-platform/sdk` — it is the Application Layer (per Architecture Decision 2), sitting above all three, unlike `packages/infrastructure` and `packages/sdk` which each depend on domain only.
+- Duplicate detection (does this item already exist in our DB) and TMDB-style matching (which metadata-provider entry corresponds to this content) are different questions answered by different mechanisms — conflating them was an early design mistake caught and corrected during this milestone's implementation.
+- `packages/domain`, `packages/infrastructure`, and `packages/sdk` (Milestones 1–3) were **not modified** — confirmed via `git diff --stat`, changes are confined to `pnpm-workspace.yaml` (additive `services/*` glob) and `services/importer/`.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- **Cast/crew/companies/countries/languages/collections** import (`specification/07-TMDB-Integration.md.txt`) requires domain aggregates Milestone 1 never modeled (`Person`, `Company`, `Genre`, `Collection`). Out of scope; only fields the `Movie`/`TVShow`/`Episode` aggregates can actually hold (title, overview, rating, runtime, trailer, artwork) are enriched.
+- `ProviderMovieDto` (Milestone 3) has no rating/runtime/trailer fields — a DTO gap when applied to a metadata-enrichment provider. These flow through the same `raw` passthrough convention already used for `imdbId`/`tmdbId`.
+- **Queue topology**: the specification names nine queues (Discovery, Movie, TV, Stream, Subtitle, TMDB, Artwork, Validation, Search). This implementation runs two real queues (Discovery, Import); every stage after discovery runs in-process within a single import job. Fanning out into the full nine-queue topology is a scaling optimization for Milestone 8, not a functional requirement.
+- **Discovery checkpoints** are process-lifetime (in-memory); a durable adapter (e.g. backed by the `Setting` table) is reasonable future work requiring a new repository, out of scope for the reason above.
+- **Image processing** validates/selects artwork URLs only; pixel-level resize/compress/convert (Sharp) is Milestone 8 scope.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer = 197 tests).
+
+Next recommended actions:
+- Begin Milestone 5 (Backend API): Authentication, Search, Catalog, Favorites, Watch History, Continue Watching, Admin APIs — the first consumer of the domain repositories and (eventually) the importer's published content over a real REST surface.
+- When a concrete Cinemana provider is eventually built (implementing `ProviderInterface` from `@ctv-platform/sdk`), register it into a real `ProviderRegistry` and wire `services/importer`'s queues/workers/scheduler into an actual running process (currently only exercised via tests).
+
+## Milestone 5 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `apps/backend` / `@ctv-platform/backend`, a NestJS application):
+
+- **Authentication**: `AuthController`/`AuthUseCases` implement register/login/refresh/logout/profile per `specification/09-Backend-API.md.txt` and `specification/12-Security.md.txt`. Access tokens are short-lived JWTs (`@nestjs/jwt`, HS256); refresh tokens are opaque random values, SHA-256-hashed at rest, and rotated on every use (`RefreshTokenRepository.revoke` + reissue) so a stolen refresh token cannot be replayed after its first legitimate use. `BcryptPasswordHasher` (12 salt rounds, configurable) and `JwtTokenService` are bound behind `PasswordHasher`/`TokenService` interface tokens (`@Inject`), not concrete classes, so they can be swapped without touching use cases.
+- **RBAC**: `RolesGuard` + `@Roles()` decorator enforce ADMIN/EDITOR/VIEWER (matching the Prisma `UserRoleEnum`) at the controller/route level; `JwtAuthGuard` is registered as a global guard with a `@Public()` escape hatch for unauthenticated routes (register/login/refresh/health).
+- **User management**: `UsersController` (self profile update, password change) and `AdminController`'s user endpoints (list/update role/deactivate) — both depend on the same `UserRepository` port as Auth, no duplicate persistence path.
+- **Catalog API**: `MoviesController`/`ShowsController`/`SeasonsController`/`EpisodesController`, backed by new local, read-only **query repositories** (`MovieQueryRepository`, `ShowQueryRepository`, `SeasonEpisodeQueryRepository`) built directly in `apps/backend` — Milestone 1's domain repositories are write-oriented and too narrow for flexible pagination/sort/filter, so rather than widening them (out of scope per "do not modify completed milestones unless absolutely necessary"), this milestone follows Milestone 4's precedent of building a local, additive read layer. These repositories map `Image` rows to artwork DTOs (`mapImagesToArtwork()`), reusing Milestone 4's finding that artwork lives in the `Image` table, never in `Movie.poster`/`backdrop` (which the import pipeline never populates).
+- **Search API**: `SearchController`/`SearchUseCases`/`SearchQueryRepository` — searches published movies/shows by title (with a `SuggestQueryDto` typeahead endpoint), same query-repository pattern as Catalog.
+- **Favorites, Watch History, Continue Watching**: each is a small, self-contained module (controller + use case + Prisma-backed repository) modeling concepts Milestone 1's domain never covered (`Favorite`, `WatchHistory`, `ContinueWatching` are Prisma-only tables), following the same "local domain modeling" precedent established for `Stream`/`Subtitle`/`Image`/`Provider` links in Milestone 4.
+- **Admin APIs**: user management (above), dashboard statistics (`DashboardStatsRepository` — catalog/user counts), and provider inspection (`ProvidersUseCases` wired to a shared, intentionally-empty `ProvidersRuntime` built from the SDK/importer's `ProviderRegistry` + `DiscoveryEngine` + `ProviderLifecycleManager` — correctly returns empty lists/health since no concrete provider is registered, consistent with the Cinemana decision above).
+- **Health**: `HealthController` reports database/Redis health, version, and uptime, reusing `DatabaseHealthCheck`/`RedisHealthCheck` from `@ctv-platform/infrastructure`.
+- **Cross-cutting**: global `ValidationPipe` (whitelist, transform, forbid-non-whitelisted) backed by class-validator DTOs on every endpoint; `AllExceptionsFilter` maps domain errors (`NotFoundError`, `ConflictError`, `ValidationError`, etc. from `@ctv-platform/domain`) and Nest's own HTTP exceptions to the standard `{success:false, error:{code,message,details}}` envelope; `ResponseInterceptor` wraps every successful response in `{success:true, data, meta}`; `@nestjs/throttler` rate limits per spec (e.g. 10/min auth, 120/min movies); `helmet` security headers; Swagger/OpenAPI served at `/api/v1/docs` via `@nestjs/swagger`.
+- Schema change: added an additive `RefreshToken` Prisma model (+ back-relation on `User`) — the one necessary, justified change to a prior milestone's schema, needed for secure token revocation/rotation; no existing model or column was altered.
+- 33 unit tests (use cases against fake repositories) + 6 integration tests (supertest against a real Nest app built via `Test.createTestingModule`, with only `PrismaService`/`USER_REPOSITORY`/`REFRESH_TOKEN_REPOSITORY`/`FavoriteRepository` overridden — every other provider, guard, pipe, and filter runs for real), all via `node --test`, consistent with every prior milestone's testing approach.
+- `apps/backend/README.md` documenting the API surface and how to run it.
+
+Architectural decisions validated:
+- `apps/backend` depends on `@ctv-platform/domain`, `@ctv-platform/infrastructure`, `@ctv-platform/sdk`, and `@ctv-platform/importer` — every API route reaches persistence and business rules only through a use case, never directly through Prisma, matching Clean Architecture's dependency rule.
+- `packages/domain`, `packages/infrastructure`, `packages/sdk`, and `services/importer` (Milestones 1–4) were **not modified**, aside from the single additive `RefreshToken` schema change described above.
+- A fully functional Cinemana provider was evaluated and confirmed to require unauthorized reverse-engineering before this milestone began; per explicit user direction, it was skipped and Milestone 5 proceeded without any concrete provider integration. This is a durable constraint, not a one-off decision for this milestone.
+
+**Important gotcha discovered and fixed (worth remembering for any future ESLint config change in `apps/backend`)**: the repo-wide `@typescript-eslint/consistent-type-imports` rule is fundamentally incompatible with NestJS's implicit (non-`@Inject`) dependency injection and with class-validator/class-transformer DTO binding. Both mechanisms rely on TypeScript's `emitDecoratorMetadata` capturing the *real* class reference at runtime — for constructor parameters (to resolve which provider to inject) and for `@Body()`/`@Query()` parameters (so `ValidationPipe` knows which DTO class to `plainToInstance()` into before applying `whitelist`/`transform`). An `import type` erases the class from the emitted JavaScript, degrading the reflected type to `Object`/`Function` and silently breaking both: DI throws `UnknownDependenciesException` at bootstrap, while broken DTO binding does not throw — it silently makes `ValidationPipe`'s whitelist strip every property, producing a confusing 400 ("property X should not exist") instead of a crash. This was triggered by running `eslint --fix` for the rule's ~30 auto-fixable violations across the package. The fix was **not** to individually flag each import, but to disable `@typescript-eslint/consistent-type-imports` for `apps/backend/**/*.ts` entirely in the root `eslint.config.mjs` (with a comment explaining why), since the rule cannot distinguish "type used only in a type position" from "type used only in a type position but the class reference must still exist at runtime for reflection." Any future NestJS backend work must keep concrete, non-`@Inject`-token classes (and any class used as a `@Body()`/`@Query()` DTO type) as regular value imports, never `import type` — interfaces bound via `@Inject(TOKEN)` and types used purely as return-type annotations remain safe as `import type`.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana or TMDB) exists or is wired in — the Admin "providers" endpoints correctly report an empty registry. This is a durable, explicitly authorized scope boundary, not an oversight.
+- Genres, Collections, People (cast/crew), Recommendations, Settings management, Metrics/analytics endpoints, and the full 9-queue Sync API surface named in parts of the wider spec set are **not** implemented — none of these have a domain aggregate or repository (Milestone 1 never modeled `Person`/`Company`/`Genre`/`Collection`, consistent with the same gap already documented in the Milestone 4 Update), and building them would require modifying completed milestones, which was out of scope per this milestone's explicit constraints.
+- Search is a straightforward title/description match against Postgres via Prisma (no dedicated search infrastructure — e.g. Elasticsearch/Meilisearch — exists yet); full-text search tuning is Milestone 8 (Optimization) scope.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer + 33 backend unit + 6 backend integration = 236 tests).
+
+Next recommended actions:
+- Begin Milestone 6 (Admin Dashboard): Dashboard, Jobs, Providers, Monitoring, Users, Logs, Settings — the first consumer of Milestone 5's Admin APIs over a real UI.
+- When a concrete Cinemana provider is eventually built and authorized, register it into the shared `ProviderRegistry` so Milestone 5's Admin "providers" endpoints and dashboard statistics reflect real data instead of an empty registry.
+
+## Milestone 6 Update
+
+Status: Completed
+
+Major deliverables completed (all under a new workspace member, `apps/admin` / `@ctv-platform/admin`, a Next.js Pages Router application):
+
+- **Technology**: Next.js 15 (Pages Router, per `specification/02-Folder-Structure.md.txt`'s `admin/src/{pages,components,layouts,hooks,services,styles,assets}` layout), Material UI, TanStack Query, React Hook Form + Zod, Recharts — exactly the stack named in `specification/03-Technology-Stack.md.txt` "Admin Dashboard", nothing extra.
+- **Auth**: `AuthContext` (JWT login via `POST /auth/login`, tokens in `localStorage`, silent `POST /auth/refresh`-then-retry-once on a 401 via `apiClient`, sign-out on refresh failure) and a `login` page; route protection redirects unauthenticated users to `/login` and authenticated users away from it.
+- **Layout & navigation**: `AdminLayout`/`Sidebar`/`Topbar` — responsive (temporary drawer on mobile, permanent on desktop), dark/light theme toggle (persisted, defaults to system preference), a global search box, and a user menu. Sidebar items are filtered by role: sections built on the backend's `/admin/*` namespace (Dashboard, Providers, Import Jobs, Synchronization, Health Monitoring, Users, Roles & Permissions, Audit Logs, Settings) are hidden from EDITOR/VIEWER because the backend itself 403s them (`AdminController` is `@Roles('ADMIN')` outright, per Milestone 5) — this mirrors real backend enforcement rather than an independent UI-only permission model.
+- **Reusable components**: one `DataTable` (search, optional filter slot, sortable headers, pagination, loading skeleton, empty state, error state) backs every list page; `EmptyState`, `ErrorState` (distinguishes a genuine error from a 404 "not implemented yet" via `ApiError.isNotImplemented`), `StatCard`, `ConfirmDialog`, `PageHeader`, `RoleGuard` round out the shared component set. `usePaginatedQuery` is the one hook wiring pagination/search/sort state to TanStack Query for every list page.
+- **Pages**: Dashboard (stats + catalog-composition chart + live provider status), Movies/TV Shows/Seasons/Episodes (browse, search, sort, paginate, detail tabs for streams/subtitles/images, with honest empty states for cast/crew/collection/provider-info/sync-history/logs — none of which have a domain aggregate or endpoint), Providers (real list + live health + real manual discovery trigger + enable/disable/reload stubs), Import Jobs, Synchronization (real per-provider discovery trigger + full/incremental/refresh/validate stubs + queue-monitoring stats), Health Monitoring (real `GET /health` + live provider health, polled every 30s), Users (real list/search/paginate + real role/active-status edit via `PATCH /admin/users/:id`; create/delete/reset-password are stubs since no such backend endpoint exists), Roles & Permissions (static reference matrix — roles are a closed backend enum, not a dynamic permissions API), Audit Logs (stub, matching `specification/12-Security.md.txt` "Audit Log" fields exactly: user/action/timestamp/IP/target/result), Settings (Zod-validated form across General/Provider/Import/Player/Search, stub persistence), and a global Search page (real, movies/shows).
+- **Honest handling of unimplemented backend areas**: per the milestone's explicit instruction ("If an endpoint is not yet implemented, use typed service abstractions instead of hardcoded mock data"), every service module (`src/services/*Service.ts`) defines the full typed request/response contract for its section and calls the namespaced REST path a future backend endpoint would use. Where Milestone 5 has no such endpoint (Import Jobs, Synchronization status, Settings, Audit Logs, and a few Provider/User mutation actions), the call 404s and the UI shows an explicit "not available yet" state — never a fabricated number or a silently-successful fake save.
+- 20 tests (`node --test`, consistent with every prior milestone): `permissions.test.ts` (the RBAC matrix), `apiClient.test.ts` (envelope unwrapping, `ApiError` mapping, and the 401-refresh-then-retry-once flow against a mocked `fetch`), and three component tests (`DataTable`, `RoleGuard`, `Login`) via `@testing-library/react` — the latter two render against a fake `<AuthContext.Provider>` value (the context is exported for exactly this purpose) rather than the real `AuthProvider`, avoiding a Next.js router dependency in tests.
+- `apps/admin/README.md` documenting every section, the typed-stub convention, and the dependency version notes below.
+
+Architectural decisions validated:
+- `apps/admin` depends on nothing else in the workspace — it talks to `apps/backend` purely over HTTP with its own local DTO types mirroring the backend's JSON shapes, the same "decoupled deployable" posture a real browser-based admin client would have.
+- `packages/domain`, `packages/infrastructure`, `packages/sdk`, `services/importer`, and `apps/backend` (Milestones 1–5) were **not modified**.
+- RBAC gating in the UI is derived from, and must stay consistent with, actual backend enforcement (`isAdmin()` gates the whole `/admin/*`-backed sections) rather than an independently invented permission model — see `src/lib/permissions.ts`.
+
+**Dependency version regression discovered and worked around**: `@mui/material@9.2.0` (the version resolved as "latest" when this milestone began) has a polymorphic-component typing regression — `Typography`/`Stack`/etc. fail to type-check when passed their own documented props (`variant`, `fontWeight`, `direction`, `spacing`, `justifyContent`, ...), with TypeScript falling back to a bare HTML-element overload and reporting "No overload matches this call" everywhere across the app (~30 errors, unrelated to any code mistake — confirmed by testing an upgraded `typescript` version first, which didn't help). Downgrading to the stable `@mui/material@7.3.11`/`@mui/icons-material@7.3.11` line resolved every instance with zero source changes. `typescript` was also bumped to `^5.9.3` for `apps/admin` specifically (not workspace-wide — scoped to this package's own `devDependency`, leaving every other package's pinned `^5.7.2` untouched) for compatibility with current `@types/react`/Next.js tooling. Any future attempt to upgrade MUI past v7 in this app should first verify the v9 regression has been fixed upstream.
+
+Known gaps / accepted scope boundaries (documented, not hidden):
+- No concrete provider (Cinemana/TMDB) exists — Providers/Synchronization correctly show an empty registry, consistent with every prior milestone.
+- Import Jobs, Synchronization status/queue metrics, Settings, Audit Logs, admin create/delete-user, reset-password, and provider enable/disable/reload all call real, typed, namespaced endpoints the backend doesn't implement yet — this is the direct continuation of gaps already documented in the Milestone 4 and 5 updates (no `Person`/`Company`/`Genre`/`Collection` aggregate, no `Setting`/audit-log wiring, no persisted job history).
+- Genres, Collections, People, and a generic "System" resources page (CPU/memory/disk) from the full `specification/11-Admin-Dashboard.md.txt` spec are out of scope for this milestone — the user's Milestone 6 instructions enumerated a narrower section list than the full spec document, and that narrower, explicitly-given list is what was built (Storage and a standalone "System" page were dropped; "Health Monitoring" absorbed the health-relevant parts of "System").
+- True push-based real-time updates (spec's "Real-time Updates") would need a WebSocket/SSE backend endpoint that doesn't exist; Provider Health and backend Health instead poll every 30 seconds via TanStack Query's `refetchInterval`.
+
+Tests and verification completed:
+- `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all pass cleanly across the whole workspace (35 infrastructure + 44 sdk + 118 importer + 33 backend + 20 admin = 250 tests). The built admin app was also smoke-tested by starting a local production server and confirming `/login`, `/` (dashboard, pre-auth loading shell), `/movies`, and a 404 route all respond correctly.
+
+Next recommended actions:
+- Begin Milestone 7 (Android TV Application): Authentication, Home, Catalog, Details, Player, Search, Settings — the first consumer of the public (non-admin) parts of Milestone 5's Backend API.
+- When a concrete Cinemana provider is eventually built and authorized, and when the backend gains Settings/Audit Log/Import Job history endpoints, wire the corresponding admin pages' real calls in without any UI rework — they already call the correct typed contracts.
+
+## Post-Milestone 6 Fix: Bootstrap Administrator Seed
+
+Status: Completed
+
+A fresh database has no users at all, so nobody could sign into `apps/admin` (built in Milestone 6) or call any `/admin/*` endpoint. No seed or bootstrap-admin mechanism existed anywhere in the repo before this fix (confirmed by a full-repo search — no `seed.*` file, no `"prisma"` config in any `package.json`, no `admin@ctv`/bootstrap pattern anywhere).
+
+What was added:
+- `prisma/seed.mjs` (repo root, next to `prisma/schema.prisma` — the conventional Prisma seed location) — upserts the three fixed roles (`ADMIN`/`EDITOR`/`VIEWER`, matching `UserRoleEnum`) and one Administrator user (`admin@ctv.local` / `Admin@123`), hashed with the real `bcrypt` package at `BCRYPT_SALT_ROUNDS` (default 12) — the exact same library, algorithm, and config apps/backend's `BcryptPasswordHasher` uses, so the account logs in through the normal `/auth/login` endpoint with no seed-specific auth path. Every write is an `upsert` keyed on a unique column (`Role.name`, `User.email`), so re-running the seed is always safe.
+- Root `package.json`: added a `"prisma": { "seed": "node prisma/seed.mjs" }` field (Prisma 5.x's required explicit seed-config convention — there is no more auto-detection), a `"db:seed": "prisma db seed"` script (mirroring the existing `"db:generate"` naming), and `bcrypt` as a devDependency (needed because the seed script is invoked from the repo root, where `bcrypt` — only previously a dependency of `apps/backend` — did not resolve under pnpm's strict, non-hoisted `node_modules`).
+- `apps/backend/README.md`: a new "Database seed (bootstrap administrator)" section with exact run commands, the default credentials table, and an explicit "change this immediately outside local dev" warning, plus one line added to "Known scope boundaries" clarifying the seed is admin-bootstrap only, not general fixture data.
+
+Verification: `pnpm db:generate` succeeds. `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` all still pass across the whole workspace unchanged. `pnpm prisma db seed` was actually run against a real (if credential-mismatched) Postgres server discovered listening locally on port 5432 — it correctly loaded `.env`, connected, and reached Prisma's query layer before failing on `Authentication failed ... for 'ctv'`, which is a real-database-provisioning limitation (no matching database/role exists in this sandbox), **not** a defect in the seed script — everything up to and including issuing the real SQL-backed upsert query executed correctly. This is the same category of limitation documented in Milestones 2–5 ("no live Postgres/Redis available in this sandbox"); full end-to-end verification (empty DB → seed → login via `/auth/login`) should be run once against the real `docker-compose.yml` Postgres before relying on this in a live environment.
+
+Known gaps / accepted scope boundaries:
+- The seed bootstraps auth only (roles + one admin user) — it is not a general demo-data/fixture seed for movies, shows, or any catalog content.
+- The seeded password is a well-known default and must be rotated outside local development; there is no admin-side reset-password endpoint yet (see the Milestone 6 Update's Users page note — `resetPassword` is a typed stub against an endpoint the backend doesn't implement), so rotation today means either the self-service `PATCH /users/me/password` after first login, or a direct database update.
+
+---
+
+# Memory Maintenance Rule
+
+After every completed phase, this document should be updated to reflect the new project state.
+
+The memory must remain accurate, concise, and implementation-oriented so it can guide subsequent phases without reintroducing architectural drift.

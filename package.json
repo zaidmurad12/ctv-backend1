@@ -1,0 +1,56 @@
+{
+  "name": "ctv-platform",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:backend": "pnpm --filter @ctv-platform/backend dev",
+    "start:backend": "pnpm --filter @ctv-platform/backend start",
+    "dev:admin": "pnpm --filter @ctv-platform/admin dev",
+    "dev:web": "pnpm --filter @ctv-platform/web dev",
+    "start:web": "pnpm --filter @ctv-platform/web start",
+    "dev:android-tv": "pnpm --filter @ctv-platform/android-tv dev",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
+    "db:seed": "prisma db seed",
+    "db:seed:content": "node prisma/bootstrap-importer.mjs",
+    "validate:env": "node ./tools/validate-env.mjs",
+    "prepare": "husky install",
+    "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "@next/eslint-plugin-next": "^16.3.2",
+    "@prisma/client": "^5.22.0",
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "bcrypt": "^5.1.1",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^15.8.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.3.3",
+    "prisma": "^5.22.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.2",
+    "zod": "^3.23.0"
+  }
+}
