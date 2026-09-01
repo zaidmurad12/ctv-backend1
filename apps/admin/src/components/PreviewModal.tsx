@@ -4,8 +4,17 @@ import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import type { AdminStreamDto, AdminSubtitleDto } from '../lib/types';
 import { srtToVtt, isVtt } from '../lib/srtToVtt';
+import { API_BASE_URL } from '../lib/apiClient';
+import { tokenStorage } from '../lib/tokenStorage';
 
-const HLS_URL = /\.m3u8(\?|$)/i;
+// See streamProxy.controller.ts's own comment: hls.js's XHR/fetch requests (unlike react-native-
+// video's native playback in the app, and unlike Safari's own OS-level HLS player below) are
+// bound by the browser's CORS policy, and these source CDNs have no reason to allow this
+// dashboard's origin - reported as "some links don't work in the control panel." Routing through
+// this backend's own origin instead sidesteps that.
+function proxiedStreamUrl(url: string): string {
+  return `${API_BASE_URL.replace(/\/$/, '')}/admin/stream-proxy?url=${encodeURIComponent(url)}`;
+}
 
 interface Props {
   title: string;
@@ -72,7 +81,11 @@ export function PreviewModal({
   onSaved,
 }: Props) {
   const [streamId, setStreamId] = useState(
-    () => streams.find((s) => s.isActive && s.isDefault)?.id ?? streams.find((s) => s.isActive)?.id ?? streams[0]?.id ?? '',
+    () =>
+      streams.find((s) => s.isActive && s.isDefault)?.id ??
+      streams.find((s) => s.isActive)?.id ??
+      streams[0]?.id ??
+      '',
   );
   const [subtitleId, setSubtitleId] = useState<string>(NONE);
   const [trackUrl, setTrackUrl] = useState<string | null>(null);
@@ -92,12 +105,21 @@ export function PreviewModal({
   const stream = streams.find((s) => s.id === streamId);
   const subtitle = subtitles.find((s) => s.id === subtitleId);
 
-  // Every stream in this catalog is served as HLS (.m3u8) - react-native-video plays that fine
-  // (ExoPlayer supports it natively on Android), but a plain browser <video src> only ever plays
-  // it in Safari; Chrome/Firefox/Edge silently fail to load it at all - reported as "some movie
-  // links don't work in the browser preview but load fine in the app." hls.js is the standard
+  // Every stream in this catalog is served as HLS - react-native-video plays that fine (ExoPlayer
+  // supports it natively on Android), but a plain browser <video src> only ever plays it in
+  // Safari; Chrome/Firefox/Edge silently fail to load it at all - reported as "some movie links
+  // don't work in the browser preview but load fine in the app." hls.js is the standard
   // MediaSource-based polyfill for exactly this gap; native support (Safari) is used as-is
   // instead, since it's more efficient than routing through hls.js unnecessarily.
+  //
+  // This used to gate the whole effect on HLS_URL (a plain ".m3u8" match against the URL text)
+  // and skip straight to a plain <source> otherwise - reported as "this link still doesn't work,"
+  // traced to a real stream URL that's genuinely HLS but served behind an opaque, tokenized path
+  // with no ".m3u8" anywhere in it (some CDNs deliberately hide their real file structure this
+  // way). Since every stream here actually is HLS regardless of what its URL happens to look
+  // like (see this comment's own first line - a documented invariant of this catalog, not a
+  // guess), there's nothing left for a plain <source> fallback to ever legitimately handle -
+  // removed below along with the check gating it.
   useEffect(() => {
     setStreamError(null);
     const video = videoRef.current;
@@ -105,8 +127,6 @@ export function PreviewModal({
 
     hlsRef.current?.destroy();
     hlsRef.current = null;
-
-    if (!HLS_URL.test(stream.streamUrl)) return;
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari plays HLS natively - the JSX below deliberately omits a <source> for any .m3u8
@@ -124,14 +144,22 @@ export function PreviewModal({
         setStreamError('هذا المتصفح لا يدعم تشغيل روابط HLS حتى مع hls.js.');
         return;
       }
-      const hls = new HlsCtor();
+      // xhrSetup carries the admin's own bearer token onto every manifest/segment request hls.js
+      // makes - the stream-proxy route is @Roles('ADMIN')-gated like the rest of the admin API,
+      // same as every other adminService call already sends this token.
+      const hls = new HlsCtor({
+        xhrSetup: (xhr) => {
+          const token = tokenStorage.getAccessToken();
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        },
+      });
       hlsRef.current = hls;
       hls.on(HlsCtor.Events.ERROR, (_event, data) => {
         if (data.fatal) {
           setStreamError(`تعذّر تشغيل الفيديو (${data.details}).`);
         }
       });
-      hls.loadSource(stream.streamUrl);
+      hls.loadSource(proxiedStreamUrl(stream.streamUrl));
       hls.attachMedia(video);
     });
 
@@ -227,7 +255,7 @@ export function PreviewModal({
 
   useEffect(() => {
     applySync(offsetMs, speed);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [offsetMs, speed, trackUrl]);
 
   function changeOffset(delta: number) {
@@ -235,7 +263,9 @@ export function PreviewModal({
   }
 
   function changeSpeed(delta: number) {
-    setSpeed((v) => Math.max(MIN_SPEED, Math.min(MAX_SPEED, Math.round((v + delta) * 1000) / 1000)));
+    setSpeed((v) =>
+      Math.max(MIN_SPEED, Math.min(MAX_SPEED, Math.round((v + delta) * 1000) / 1000)),
+    );
   }
 
   async function saveSync() {
@@ -356,10 +386,6 @@ export function PreviewModal({
                 controls
                 className="w-full rounded-lg bg-black aspect-video mb-3"
               >
-                {/* hls.js (see the effect above) attaches its own MediaSource src for an .m3u8
-                    stream when the browser has no native HLS support - a plain <source> here for
-                    that same URL would then just be a second, competing, unusable source. */}
-                {!HLS_URL.test(stream.streamUrl) && <source src={stream.streamUrl} />}
                 {trackUrl && (
                   <track
                     kind="subtitles"

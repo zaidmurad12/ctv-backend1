@@ -2,7 +2,10 @@ import { ApiError } from './apiError';
 import { tokenStorage } from './tokenStorage';
 import type { ApiErrorResponse, ApiSuccessResponse, PaginationMeta } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+// Exported (was module-private) so callers that build a URL by hand instead of going through
+// request() below - PreviewModal's stream-proxy URL being the one case so far - stay pointed at
+// the same backend the rest of this client already targets, rather than hardcoding it separately.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 
 export type QueryParams = Record<string, string | number | boolean | undefined | null>;
 
