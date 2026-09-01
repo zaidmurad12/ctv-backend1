@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Logger,
   Query,
   Res,
 } from '@nestjs/common';
@@ -12,6 +13,19 @@ import { Roles } from '../common/decorators/decorators.js';
 
 const M3U8_EXTENSION = /\.m3u8(\?|$)/i;
 const M3U8_CONTENT_TYPE = /mpegurl/i;
+
+// A bare Node fetch (default User-Agent "node", no Referer/Accept at all) reads to a lot of CDNs
+// as a bot/script rather than a real player, and some of these source servers reject exactly that
+// - the same URL playing fine in the app (ExoPlayer, a real device) but failing only through this
+// proxy is the signature of that, not a CORS problem (this endpoint already sidesteps CORS by
+// existing at all). Referer is set to the target's own origin specifically because hotlink
+// protection commonly checks for "the page embedding this asset is on my own site" - a generic
+// browser UA alone doesn't satisfy that check on its own.
+const UPSTREAM_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: '*/*',
+};
 
 // A playlist line's own URI is always relative to the playlist that referenced it, not to the
 // original stream URL the browser first asked for - resolving against `base` (the URL actually
@@ -55,6 +69,8 @@ function rewritePlaylist(text: string, base: URL): string {
 @Roles('ADMIN')
 @Controller('admin/stream-proxy')
 export class StreamProxyController {
+  private readonly logger = new Logger(StreamProxyController.name);
+
   @Get()
   @ApiOperation({ summary: 'Proxies an HLS manifest or segment for the admin preview player' })
   async proxy(@Query('url') rawUrl: string | undefined, @Res() res: Response): Promise<void> {
@@ -72,11 +88,24 @@ export class StreamProxyController {
 
     let upstream: globalThis.Response;
     try {
-      upstream = await fetch(target.toString(), { signal: AbortSignal.timeout(15000) });
-    } catch {
+      upstream = await fetch(target.toString(), {
+        signal: AbortSignal.timeout(15000),
+        headers: { ...UPSTREAM_HEADERS, Referer: `${target.origin}/` },
+      });
+    } catch (err) {
+      this.logger.warn(`Network error proxying "${target.toString()}": ${String(err)}`);
       throw new BadGatewayException('Could not reach the upstream stream.');
     }
     if (!upstream.ok) {
+      // A short body snippet, not just the status - some of these servers return a real HTML
+      // "blocked"/"forbidden" page with a 200 (not 403), which a status-only log can't tell apart
+      // from a legitimately empty/successful response.
+      const snippet = await upstream
+        .clone()
+        .text()
+        .then((t) => t.slice(0, 200))
+        .catch(() => '<unreadable>');
+      this.logger.warn(`Upstream "${target.toString()}" responded ${upstream.status}: ${snippet}`);
       throw new BadGatewayException(`Upstream responded with ${upstream.status}.`);
     }
 
