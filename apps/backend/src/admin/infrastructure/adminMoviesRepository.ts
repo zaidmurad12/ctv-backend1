@@ -1,3 +1,5 @@
+import { adminListOrderBy, isDefaultNewestSort, releasedFirstPage } from './adminListSort.js';
+import { parseSourceLinks } from '../../common/sourceLinks.js';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PrismaDatabaseClient } from '@ctv-platform/infrastructure';
 import { PrismaService } from '../../prisma/prismaService.js';
@@ -10,7 +12,6 @@ import type {
   UpdateStreamDto,
   UpdateSubtitleDto,
 } from '../dto.js';
-import { AudioSyncAnalysisService } from './audioSyncAnalysisService.js';
 import { ArchiveOrgService } from './archiveOrgService.js';
 import { MovieHashService } from './movieHashService.js';
 import type { SubtitleCandidate } from './openSubtitlesService.js';
@@ -44,30 +45,9 @@ export class AdminMoviesRepository {
     private readonly tmdbImport: TmdbImportService,
     private readonly openSubtitles: OpenSubtitlesService,
     private readonly movieHash: MovieHashService,
-    private readonly audioSyncAnalysis: AudioSyncAnalysisService,
     private readonly archiveOrg: ArchiveOrgService,
   ) {
     this.prisma = prismaService.client;
-  }
-
-  /**
-   * The radical fix (see AudioSyncAnalysisService's own comment): runs once, automatically,
-   * right after a subtitle is attached, instead of waiting on a viewer to notice a mismatch and
-   * fix it locally. Fire-and-forget - the admin action that attached this subtitle returns
-   * immediately either way, this can take a minute or two in the background.
-   */
-  private async triggerSyncAnalysis(
-    movieId: string,
-    subtitleId: string,
-    content: string,
-  ): Promise<void> {
-    const stream = await this.prisma.stream.findFirst({
-      where: { isActive: true, movieProvider: { movieId } },
-      orderBy: { isDefault: 'desc' },
-      select: { streamUrl: true },
-    });
-    if (!stream) return;
-    this.audioSyncAnalysis.analyzeInBackground(subtitleId, stream.streamUrl, content);
   }
 
   async list(params: {
@@ -78,6 +58,10 @@ export class AdminMoviesRepository {
     language?: string;
     hasStream?: boolean;
     hasSubtitle?: boolean;
+    hasSourceMatch?: boolean;
+    missingArabicTitle?: boolean;
+    missingArtwork?: boolean;
+    sort?: string;
     status?: string;
   }): Promise<{ items: AdminMovieSummaryDto[]; total: number }> {
     const page = params.page ?? 1;
@@ -122,23 +106,53 @@ export class AdminMoviesRepository {
         andConditions.push({ NOT: hasAnySubtitle, originalLanguage: { not: 'ar' } });
       }
     }
+    // A real column (see ScheduledImportService's own sourceMatchCheck), not a relation filter -
+    // true/false only ever match a movie that's actually been checked; a movie that hasn't
+    // (column still null) matches neither, which is the intended "not checked yet" exclusion
+    // (see AdminListMoviesQueryDto's own comment).
+    if (params.hasSourceMatch !== undefined) {
+      where.hasSourceMatch = params.hasSourceMatch;
+    }
+    // Arabic-language source matching (CEE/Cinemana, see calculateMatchScore in the RN app) leans
+    // heavily on titleAr for an exact match - a movie with no Arabic title on file falls back to
+    // English/fuzzy matching even when its original language is Arabic, which is exactly the
+    // weaker path. This is what the "بحاجة استيراد اسم عربي" backfill job/admin filter targets -
+    // an empty string counts as missing the same as a genuinely null one.
+    const missingArabicTitle = { OR: [{ titleAr: null }, { titleAr: '' }] };
+    if (params.missingArabicTitle !== undefined) {
+      andConditions.push(params.missingArabicTitle ? missingArabicTitle : { NOT: missingArabicTitle });
+    }
+    // "Missing artwork" means missing *either* the logo or the backdrop (not both) - a title with
+    // a poster and a backdrop but no logo still needs an admin's attention, the same as one with
+    // neither.
+    const hasLogo = { images: { some: { type: 'LOGO' } } };
+    const hasBackdrop = { images: { some: { type: 'BACKDROP' } } };
+    if (params.missingArtwork !== undefined) {
+      andConditions.push(
+        params.missingArtwork ? { OR: [{ NOT: hasLogo }, { NOT: hasBackdrop }] } : { AND: [hasLogo, hasBackdrop] },
+      );
+    }
     if (andConditions.length) where.AND = andConditions;
 
+    const include = { images: true, providers: { include: { streams: true, subtitles: true } } };
     const [rows, total] = await Promise.all([
-      this.prisma.movie.findMany({
+      isDefaultNewestSort(params.sort)
+        ? releasedFirstPage(this.prisma.movie as never, where, include, page, limit)
+        : this.prisma.movie.findMany({
         where,
-        include: { images: true, providers: { include: { streams: true, subtitles: true } } },
+        include,
         skip: (page - 1) * limit,
         take: limit,
         // "Newest" here means newest release, not newest added to the catalog - same fix as the
         // app's own "الأحدث" home rail (see the RN app's fetchMovies), which had the identical
         // mix-up.
-        orderBy: { releaseDate: 'desc' },
+        orderBy: adminListOrderBy(params.sort),
       }),
       this.prisma.movie.count({ where }),
     ]);
 
-    return { items: rows.map((row) => this.toSummary(row)), total };
+    // Rows from releasedFirstPage come back untyped (it serves both models); same shape as findMany's.
+    return { items: rows.map((row) => this.toSummary(row as never)), total };
   }
 
   /** Distinct genre names / original languages across every non-deleted movie, for the admin list's filter dropdowns. */
@@ -233,6 +247,7 @@ export class AdminMoviesRepository {
     return {
       ...this.toSummary(row),
       overview: row.overview,
+      sourceLinks: parseSourceLinks(row.sourceLinks),
       streams: streams.map((s) => ({
         id: s.id,
         quality: s.quality,
@@ -266,6 +281,8 @@ export class AdminMoviesRepository {
     // artwork always comes from the Image table - see movieQueryRepository's mapImagesToArtwork)
     // so a manual edit here has to replace the Image row of that type, not just set the column.
     const { poster, backdrop, logo, ...rest } = dto;
+    // Stored as plain JSON (class-validator hands over class instances).
+    if (rest.sourceLinks) rest.sourceLinks = rest.sourceLinks.map((l) => ({ source: l.source, nb: l.nb, kind: l.kind }));
     // UpdateMovieDto.status is validated against the same 3 values at the API boundary
     // (@IsIn in dto.ts) but typed as a plain string there (so the DTO file doesn't need to
     // import a Prisma-generated enum) - Prisma's own update() wants its actual enum type,
@@ -453,7 +470,6 @@ export class AdminMoviesRepository {
           where: { id: created.id },
           data: { resolvedUrl: link, resolvedContent: content },
         });
-        void this.triggerSyncAnalysis(movieId, created.id, content);
         return;
       }
     }
@@ -494,7 +510,6 @@ export class AdminMoviesRepository {
       where: { id: created.id },
       data: { url: `${PUBLIC_API_BASE_URL}/subtitles/${created.id}/resolve` },
     });
-    void this.triggerSyncAnalysis(movieId, created.id, content);
   }
 
   private async ensureMovieProvider(
@@ -537,6 +552,7 @@ export class AdminMoviesRepository {
     rating: unknown;
     releaseDate: Date | null;
     featuredOrder: number | null;
+    hasSourceMatch: boolean | null;
     images: Array<{ type: string; url: string }>;
     providers: Array<{ streams: Array<{ isActive: boolean }>; subtitles: Array<unknown> }>;
   }): AdminMovieSummaryDto {
@@ -546,13 +562,14 @@ export class AdminMoviesRepository {
       titleAr: row.titleAr,
       status: row.status,
       originalLanguage: row.originalLanguage,
-      poster: row.images.find((img) => img.type === 'POSTER')?.url ?? null,
-      backdrop: row.images.find((img) => img.type === 'BACKDROP')?.url ?? null,
-      logo: row.images.find((img) => img.type === 'LOGO')?.url ?? null,
+      poster: [...row.images].reverse().find((img) => img.type === 'POSTER')?.url ?? null,
+      backdrop: [...row.images].reverse().find((img) => img.type === 'BACKDROP')?.url ?? null,
+      logo: [...row.images].reverse().find((img) => img.type === 'LOGO')?.url ?? null,
       rating: row.rating === null ? null : Number(row.rating),
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
       hasPlayableStream: row.providers.some((p) => p.streams.some((s) => s.isActive)),
       hasSubtitles: row.providers.some((p) => p.subtitles.length > 0),
+      hasSourceMatch: row.hasSourceMatch,
       featuredOrder: row.featuredOrder,
     };
   }

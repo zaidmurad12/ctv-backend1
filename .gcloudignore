@@ -17,3 +17,6 @@ apps/android-tv/build
 **/.next
 **/*.tsbuildinfo
 *.apk
+# The one exception: the release build the in-app update check serves (see
+# apps/backend/src/app-update/appVersion.ts and apps/backend/release-assets/README.md).
+!apps/backend/release-assets/*.apk

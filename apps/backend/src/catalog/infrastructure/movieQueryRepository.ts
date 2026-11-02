@@ -7,8 +7,10 @@ import type {
   StreamResponseDto,
   SubtitleResponseDto,
 } from '../dto.js';
-import { mapImagesToArtwork } from './artworkMapper.js';
+import { mapImagesToArtwork, withStoredLogo } from './artworkMapper.js';
 import { mapCast, mapCountry, mapDirector, mapGenres, mapWriter } from './creditsMapper.js';
+import { attachPartNumbers } from './partNumbers.js';
+import { parseSourceLinks } from '../../common/sourceLinks.js';
 import { resolveOrderBy, resolveSkip } from './queryHelpers.js';
 
 export interface MovieListParams {
@@ -19,7 +21,10 @@ export interface MovieListParams {
   readonly search?: string;
   readonly year?: number;
   readonly language?: string;
+  readonly genre?: string;
   readonly minVotes?: number;
+  readonly minRating?: number;
+  readonly available?: boolean;
 }
 
 @Injectable()
@@ -33,7 +38,14 @@ export class MovieQueryRepository {
   async list(params: MovieListParams): Promise<{ items: MovieSummaryDto[]; total: number }> {
     const skip = resolveSkip(params.page, params.limit);
     const take = params.limit ?? 20;
-    const where = this.buildWhere(params);
+    // Sorted by release date = "newest releases": only what's actually out. A title with a future
+    // release date (imported ahead of time) used to sit at the very top of every "newest" list
+    // until that date came - reported as unreleased films stuck at the front of the latest row
+    // while newer, already-released ones sat below them. Each one now appears on its own
+    // release day, so the list keeps moving on its own.
+    const baseWhere = this.buildWhere(params);
+    const where: Record<string, unknown> =
+      params.sort === 'releaseDate' ? { AND: [baseWhere, { releaseDate: { lte: new Date() } }] } : baseWhere;
 
     const [rows, total] = await Promise.all([
       this.prisma.movie.findMany({
@@ -50,7 +62,7 @@ export class MovieQueryRepository {
       this.prisma.movie.count({ where }),
     ]);
 
-    return { items: rows.map((row) => this.toSummary(row)), total };
+    return { items: await attachPartNumbers(this.prisma, rows.map((row) => this.toSummary(row))), total };
   }
 
   async findById(id: string): Promise<MovieDetailDto | null> {
@@ -70,8 +82,9 @@ export class MovieQueryRepository {
     }
 
     const [streams, subtitles] = await Promise.all([this.listStreams(id), this.listSubtitles(id)]);
+    const [summaryWithPartNumber] = await attachPartNumbers(this.prisma, [this.toSummary(row)]);
     return {
-      ...this.toSummary(row),
+      ...summaryWithPartNumber,
       originalTitle: row.originalTitle,
       tagline: row.tagline,
       genres: mapGenres(row.genres),
@@ -81,6 +94,12 @@ export class MovieQueryRepository {
       country: mapCountry(row.countries),
       streams,
       subtitles,
+      // row.trailer (see prisma/schema.prisma's own Movie.trailer) is populated automatically at
+      // import time (extractEnrichmentFields.ts) - this DTO simply never had a field to carry it
+      // to any client until now, so every trailer TMDB ever found was silently discarded here
+      // regardless of the import having worked correctly.
+      trailerUrl: row.trailer,
+      sourceLinks: parseSourceLinks(row.sourceLinks),
     };
   }
 
@@ -181,11 +200,23 @@ export class MovieQueryRepository {
       return Number(b.row.popularity ?? 0) - Number(a.row.popularity ?? 0);
     });
 
-    return scored.slice(0, limit).map(({ row }) => this.toSummary(row));
+    return attachPartNumbers(this.prisma, scored.slice(0, limit).map(({ row }) => this.toSummary(row)));
   }
 
   private buildWhere(params: MovieListParams): Record<string, unknown> {
     const where: Record<string, unknown> = { deletedAt: null, status: 'PUBLISHED' };
+    // "Available titles only" (app setting): passed the admin panel's source-compatibility check,
+    // or has an active stream of its own.
+    if (params.available) {
+      where.AND = [
+        {
+          OR: [
+            { hasSourceMatch: true },
+            { providers: { some: { streams: { some: { isActive: true } } } } },
+          ],
+        },
+      ];
+    }
     if (params.search) {
       // Only ever matched the English `title` column - searching "الجوكر" for "Joker" (or any
       // other Arabic-titled search) always came back empty even though the movie was in the
@@ -204,8 +235,19 @@ export class MovieQueryRepository {
     if (params.language) {
       where.originalLanguage = params.language;
     }
+    if (params.genre) {
+      // genres is a many-to-many through MovieGenre - `some` matches a movie that has at least
+      // one linked genre row whose own genre.name equals the requested value. mapGenres()
+      // (creditsMapper.ts) exposes genre.name verbatim as each movie's own `genres` array
+      // client-side, so this is an exact match against the same string the app already filters
+      // by locally today - no slug/id translation needed on either side.
+      where.genres = { some: { genre: { name: params.genre } } };
+    }
     if (params.minVotes) {
       where.voteCount = { gte: params.minVotes };
+    }
+    if (params.minRating) {
+      where.rating = { gte: params.minRating };
     }
     return where;
   }
@@ -216,6 +258,7 @@ export class MovieQueryRepository {
     titleAr: string | null;
     overview: string | null;
     overviewAr: string | null;
+    imdbId: string | null;
     releaseDate: Date | null;
     rating: unknown;
     runtime: number | null;
@@ -223,6 +266,8 @@ export class MovieQueryRepository {
     originalLanguage: string | null;
     status: string;
     images: Array<{ type: string; url: string }>;
+    logo?: string | null;
+    hasSourceMatch?: boolean | null;
     genres: Parameters<typeof mapGenres>[0];
     collectionId?: string | null;
     providers: Array<{ streams: Array<{ isActive: boolean }> }>;
@@ -233,17 +278,35 @@ export class MovieQueryRepository {
       titleAr: row.titleAr,
       overview: row.overview,
       overviewAr: row.overviewAr,
+      imdbId: row.imdbId,
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
       rating: row.rating === null ? null : Number(row.rating),
       runtime: row.runtime,
       ageRating: row.ageRating,
       originalLanguage: row.originalLanguage,
+      hasSourceMatch: row.hasSourceMatch ?? null,
       status: row.status,
       genres: mapGenres(row.genres),
       hasPlayableStream: row.providers.some((p) => p.streams.some((s) => s.isActive)),
       collectionId: row.collectionId ?? null,
-      artwork: mapImagesToArtwork(row.images),
+      artwork: withStoredLogo(mapImagesToArtwork(row.images), row.logo),
     };
+  }
+
+  /** Published movies by id, returned in the order of `ids` (a missing/unpublished one is skipped) - for admin-built home rows. */
+  async byIds(ids: string[]): Promise<MovieSummaryDto[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.movie.findMany({
+      where: { id: { in: ids }, deletedAt: null, status: 'PUBLISHED' },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        providers: { include: { streams: true } },
+      },
+    });
+    const summaries = await attachPartNumbers(this.prisma, rows.map((row) => this.toSummary(row)));
+    const byId = new Map(summaries.map((summary) => [summary.id, summary]));
+    return ids.map((id) => byId.get(id)).filter((s): s is MovieSummaryDto => !!s);
   }
 
   /**
@@ -263,9 +326,10 @@ export class MovieQueryRepository {
       },
       orderBy: { featuredOrder: 'asc' },
     });
-    return rows.map((row) => ({
-      ...this.toSummary(row),
-      featuredOrder: row.featuredOrder as number,
+    const summaries = await attachPartNumbers(this.prisma, rows.map((row) => this.toSummary(row)));
+    return summaries.map((summary, i) => ({
+      ...summary,
+      featuredOrder: rows[i].featuredOrder as number,
     }));
   }
 
@@ -285,6 +349,6 @@ export class MovieQueryRepository {
       },
       orderBy: { releaseDate: 'asc' },
     });
-    return rows.map((row) => this.toSummary(row));
+    return attachPartNumbers(this.prisma, rows.map((row) => this.toSummary(row)));
   }
 }

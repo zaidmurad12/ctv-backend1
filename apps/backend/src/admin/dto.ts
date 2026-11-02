@@ -14,6 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../common/dto/pagination.dto.js';
+import { SourceLinkDto, type SourceLink } from '../common/sourceLinks.js';
 
 // Query-string booleans arrive as the literal strings "true"/"false" - class-transformer's own
 // `@Type(() => Boolean)` would coerce *any* non-empty string (including "false") to `true`,
@@ -109,6 +110,11 @@ export class AdminListMoviesQueryDto extends PaginationQueryDto {
   @IsString()
   language?: string;
 
+  @ApiPropertyOptional({ enum: ['newest', 'oldest', 'rating', 'rating-asc', 'popularity'] })
+  @IsOptional()
+  @IsIn(['newest', 'oldest', 'rating', 'rating-asc', 'popularity'])
+  sort?: string;
+
   @ApiPropertyOptional({
     description: "Filter to movies that do/don't have at least one active stream yet",
   })
@@ -125,12 +131,40 @@ export class AdminListMoviesQueryDto extends PaginationQueryDto {
   @IsBoolean()
   hasSubtitle?: boolean;
 
+  // Distinct from hasStream - a movie with no stored Stream row can still have a real,
+  // confirmed CEE/Cinemana match (see ScheduledImportService's own sourceMatchCheck), which is
+  // what the app's own live fallback plays from on the spot. `true`/`false` only ever match a
+  // movie ScheduledImportService has actually checked - a movie it hasn't reached yet (both
+  // hasSourceMatch and sourceMatchCheckedAt still null) matches neither value, so this filter
+  // naturally excludes the "not checked yet" bucket rather than lumping it in with "no match".
+  @ApiPropertyOptional({
+    description: 'Filter to movies with a confirmed (true) or confirmed-absent (false) CEE/Cinemana source match - only ever set for movies with no stored stream; unset means not checked yet',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  hasSourceMatch?: boolean;
+
   @ApiPropertyOptional({
     description: 'Filter to exactly one status (e.g. show published-only or draft-only)',
   })
   @IsOptional()
   @IsIn(['DRAFT', 'PENDING', 'PUBLISHED', 'REMOVED', 'INACTIVE'])
   status?: string;
+
+  // See AdminMoviesRepository.list's own comment on why titleAr matters for source matching, not
+  // just display.
+  @ApiPropertyOptional({ description: 'Filter to movies with no Arabic title on file' })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  missingArabicTitle?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter to movies missing a logo and/or a backdrop image' })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  missingArtwork?: boolean;
 }
 
 export class ImportWorkDto {
@@ -369,6 +403,21 @@ export class ArchiveImportResultDto {
 
 // Every field optional - a PATCH only ever sends what actually changed.
 export class UpdateMovieDto {
+  // Admin-pinned CEE/Cinemana entries (see Movie.sourceLinks) - replaces the whole list when sent.
+  @ApiPropertyOptional({ type: [SourceLinkDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SourceLinkDto)
+  sourceLinks?: SourceLinkDto[];
+
+  // Manual compatibility mark (see Movie.hasSourceMatch): true = tested and plays from a source,
+  // false = tested and does not, null = clears it back to "not tested yet".
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  hasSourceMatch?: boolean | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -452,6 +501,12 @@ export class AdminMovieSummaryDto {
 
   @ApiPropertyOptional({
     description:
+      'Confirmed CEE/Cinemana source match (see Movie.hasSourceMatch) - null when hasPlayableStream is true (not applicable) or when ScheduledImportService has not checked this movie yet',
+  })
+  hasSourceMatch?: boolean | null;
+
+  @ApiPropertyOptional({
+    description:
       'Position in the home hero carousel, null if not featured - see Movie.featuredOrder',
   })
   featuredOrder?: number | null;
@@ -507,6 +562,9 @@ export class AdminSubtitleDto {
 }
 
 export class AdminMovieDetailDto extends AdminMovieSummaryDto {
+  @ApiPropertyOptional({ type: [SourceLinkDto] })
+  sourceLinks?: SourceLink[];
+
   @ApiPropertyOptional()
   overview?: string | null;
 
@@ -647,7 +705,7 @@ export class UpdateSubtitleDto {
   isDefault?: boolean;
 
   // Lets an admin manually correct/confirm the sync PreviewModal (apps/admin) applies for every
-  // future viewer - the same fields AudioSyncAnalysisService sets automatically on import, just
+  // future viewer - the manually tuned offset/speed defaults (there is no automatic analysis anymore), just
   // writable here too for whenever the automatic result needs a manual override.
   @ApiPropertyOptional()
   @IsOptional()
@@ -665,6 +723,12 @@ export class UpdateSubtitleDto {
 // only its episodes do). ---------------------------------------------------------------------
 
 export class AdminListShowsQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ description: "Filter to shows manually marked compatible / incompatible (unmarked ones match neither)" })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  hasSourceMatch?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -674,6 +738,11 @@ export class AdminListShowsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   language?: string;
+
+  @ApiPropertyOptional({ enum: ['newest', 'oldest', 'rating', 'rating-asc', 'popularity'] })
+  @IsOptional()
+  @IsIn(['newest', 'oldest', 'rating', 'rating-asc', 'popularity'])
+  sort?: string;
 
   // "Missing" rather than movies' own hasStream/hasSubtitle ("has at least one") - a show is
   // never really "done" until *every* episode has a stream/subtitle, so what an admin actually
@@ -694,16 +763,55 @@ export class AdminListShowsQueryDto extends PaginationQueryDto {
   @IsBoolean()
   missingSubtitle?: boolean;
 
+  // The positive counterpart missingStream doesn't cover: "has at least one playable episode
+  // anywhere" vs "genuinely has zero streams across every episode" - separate from missingStream
+  // (which is true for nearly every show, since almost none are 100% complete) because an admin
+  // asking "which shows have no playback source at all" wants this, not that.
+  @ApiPropertyOptional({
+    description: 'Filter to shows that do/do not have at least one active stream on any episode',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  hasAnyStream?: boolean;
+
   @ApiPropertyOptional({
     description: 'Filter to exactly one status (e.g. show published-only or draft-only)',
   })
   @IsOptional()
   @IsIn(['DRAFT', 'PENDING', 'PUBLISHED', 'REMOVED', 'INACTIVE'])
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Filter to shows with no Arabic title on file' })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  missingArabicTitle?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter to shows missing a logo and/or a backdrop image' })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  missingArtwork?: boolean;
 }
 
 // Every field optional - a PATCH only ever sends what actually changed.
 export class UpdateShowDto {
+  // Admin-pinned CEE/Cinemana entries (see Movie.sourceLinks) - replaces the whole list when sent.
+  @ApiPropertyOptional({ type: [SourceLinkDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SourceLinkDto)
+  sourceLinks?: SourceLinkDto[];
+
+  // Manual compatibility mark (see Movie.hasSourceMatch): true = tested and plays from a source,
+  // false = tested and does not, null = clears it back to "not tested yet".
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  hasSourceMatch?: boolean | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -746,6 +854,9 @@ export class UpdateShowDto {
 export class AdminShowSummaryDto {
   @ApiProperty()
   id!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  hasSourceMatch?: boolean | null;
 
   @ApiProperty()
   title!: string;
@@ -793,6 +904,11 @@ export class AdminShowSummaryDto {
       'True if any imported episode is missing an active stream or a subtitle - the show as a whole still needs admin attention',
   })
   hasIncompleteEpisodes!: boolean;
+
+  @ApiProperty({
+    description: 'True if at least one episode has an active stream from any provider',
+  })
+  hasAnyPlayableStream!: boolean;
 }
 
 export class AdminEpisodeSummaryDto {
@@ -853,6 +969,9 @@ export class AdminSeasonSummaryDto {
 }
 
 export class AdminShowDetailDto extends AdminShowSummaryDto {
+  @ApiPropertyOptional({ type: [SourceLinkDto] })
+  sourceLinks?: SourceLink[];
+
   @ApiPropertyOptional()
   overview?: string | null;
 
@@ -865,39 +984,20 @@ export class AdminShowDetailDto extends AdminShowSummaryDto {
 export type AdminFeaturedItemDto =
   (AdminMovieSummaryDto & { type: 'movie' }) | (AdminShowSummaryDto & { type: 'show' });
 
-// One row per title the app's own audio-sync feature has reported a real mismatch for - see
-// SyncIssueRepository's own comment in ../catalog/infrastructure/syncIssueRepository.ts.
-export class SyncIssueDto {
-  @ApiProperty()
-  id!: string;
+// Re-splits a show's existing episodes (in their current season/episode order) into a new season
+// layout - e.g. [9, 6, 8, 8, 10] = five seasons of 9/6/8/8/10 episodes. See
+// AdminShowsRepository.restructureSeasons for exactly what it preserves and what it creates.
+export class RestructureSeasonsDto {
+  @ApiProperty({ type: [Number], description: 'Episode count of each season, in order' })
+  @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  layout!: number[];
 
-  @ApiPropertyOptional()
-  movieId?: string | null;
-
-  @ApiPropertyOptional()
-  episodeId?: string | null;
-
-  @ApiPropertyOptional()
-  showId?: string | null;
-
-  @ApiProperty()
-  title!: string;
-
-  @ApiProperty()
-  offsetMs!: number;
-
-  @ApiProperty()
-  speed!: number;
-
-  @ApiProperty()
-  reportCount!: number;
-
-  @ApiProperty()
-  firstReportedAt!: string;
-
-  @ApiProperty()
-  lastReportedAt!: string;
-
-  @ApiProperty()
-  resolved!: boolean;
+  @ApiPropertyOptional({
+    description: 'Allow deleting trailing episodes when the new layout covers fewer than exist',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowDelete?: boolean;
 }

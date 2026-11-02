@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, PlayCircle, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { AdminLayout } from '../../components/Sidebar';
+import { CompatMarkButtons } from '../../components/CompatMarkButtons';
 import { useAuth } from '../../context/AuthContext';
 import { adminService } from '../../services/adminService';
 import type { AdminShowFilterOptions, AdminShowSummaryDto, PaginationMeta } from '../../lib/types';
@@ -29,8 +30,12 @@ export default function ShowsPage() {
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [language, setLanguage] = useState('');
-  const [availability, setAvailability] = useState<'' | 'no-stream' | 'no-subtitle'>('');
+  const [sort, setSort] = useState('');
+  const [sourceMatch, setSourceMatch] = useState<'' | 'has-match' | 'no-match'>('');
+  const [availability, setAvailability] = useState<'' | 'has-stream' | 'no-stream' | 'no-subtitle'>('');
   const [status, setStatus] = useState('');
+  // See the movies list's identical filter for the full reasoning.
+  const [contentGap, setContentGap] = useState<'' | 'no-arabic-title' | 'no-artwork'>('');
   const [filterOptions, setFilterOptions] = useState<AdminShowFilterOptions>({
     genres: [],
     languages: [],
@@ -53,9 +58,14 @@ export default function ShowsPage() {
     setSearch(queryString(router.query.search));
     setGenre(queryString(router.query.genre));
     setLanguage(queryString(router.query.language));
+    setSort(queryString(router.query.sort));
+    const match = queryString(router.query.sourceMatch);
+    setSourceMatch(match === 'has-match' || match === 'no-match' ? match : '');
     const avail = queryString(router.query.availability);
-    setAvailability(avail === 'no-stream' || avail === 'no-subtitle' ? avail : '');
+    setAvailability(avail === 'has-stream' || avail === 'no-stream' || avail === 'no-subtitle' ? avail : '');
     setStatus(queryString(router.query.status));
+    const gap = queryString(router.query.contentGap);
+    setContentGap(gap === 'no-arabic-title' || gap === 'no-artwork' ? gap : '');
     setHydrated(true);
   }, [router.isReady, router.query, hydrated]);
 
@@ -67,9 +77,17 @@ export default function ShowsPage() {
         search: search || undefined,
         genre: genre || undefined,
         language: language || undefined,
-        missingStream: availability === 'no-stream' ? true : undefined,
+        sort: sort || undefined,
+        // hasAnyStream (not missingStream) backs this selector's has/no-stream options - "has a
+        // playback source at all" vs "genuinely has none anywhere", matching the movies list's
+        // own has-stream/no-stream pair. missingStream ("at least one episode still missing
+        // one") stays available on the DTO for other uses, just not this control.
+        hasAnyStream: availability === 'has-stream' ? true : availability === 'no-stream' ? false : undefined,
         missingSubtitle: availability === 'no-subtitle' ? true : undefined,
+        hasSourceMatch: sourceMatch === 'has-match' ? true : sourceMatch === 'no-match' ? false : undefined,
         status: status || undefined,
+        missingArabicTitle: contentGap === 'no-arabic-title' ? true : undefined,
+        missingArtwork: contentGap === 'no-artwork' ? true : undefined,
       })
       .then((result) => {
         setShows(result.items);
@@ -97,8 +115,11 @@ export default function ShowsPage() {
           ...(search ? { search } : {}),
           ...(genre ? { genre } : {}),
           ...(language ? { language } : {}),
+          ...(sort ? { sort } : {}),
+          ...(sourceMatch ? { sourceMatch } : {}),
           ...(availability ? { availability } : {}),
           ...(status ? { status } : {}),
+          ...(contentGap ? { contentGap } : {}),
         },
       },
       undefined,
@@ -111,7 +132,7 @@ export default function ShowsPage() {
     load();
     syncUrl(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, hydrated, page, genre, language, availability, status]);
+  }, [user, hydrated, page, genre, language, sort, sourceMatch, availability, status, contentGap]);
 
   function submitSearch(event: React.FormEvent) {
     event.preventDefault();
@@ -289,6 +310,35 @@ export default function ShowsPage() {
         </select>
 
         <select
+          value={sort}
+          onChange={(e) => {
+            setPage(1);
+            setSort(e.target.value);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+        >
+          <option value="">الأحدث إصداراً</option>
+          <option value="rating">الأعلى تقييماً</option>
+          <option value="rating-asc">الأقل تقييماً</option>
+          <option value="oldest">الأقدم إصداراً</option>
+          <option value="popularity">الأكثر شهرة</option>
+        </select>
+
+        <select
+          value={sourceMatch}
+          onChange={(e) => {
+            setPage(1);
+            setSourceMatch(e.target.value as typeof sourceMatch);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+          title="علامة يدوية بعد اختبار المسلسل في التطبيق"
+        >
+          <option value="">كل أعمال التوافق</option>
+          <option value="has-match">متوافق</option>
+          <option value="no-match">غير متوافق</option>
+        </select>
+
+        <select
           value={availability}
           onChange={(e) => {
             setPage(1);
@@ -297,8 +347,23 @@ export default function ShowsPage() {
           className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
         >
           <option value="">كل الحالات</option>
-          <option value="no-stream">توجد حلقة بدون رابط تشغيل</option>
+          <option value="has-stream">يمتلك رابط تشغيل</option>
+          <option value="no-stream">بدون أي رابط تشغيل</option>
           <option value="no-subtitle">توجد حلقة بدون ترجمة</option>
+        </select>
+
+        <select
+          value={contentGap}
+          onChange={(e) => {
+            setPage(1);
+            setContentGap(e.target.value as typeof contentGap);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+          title="الاسم العربي يؤثر على دقة مطابقة المصادر أيضاً، وليس فقط على العرض"
+        >
+          <option value="">كل الأعمال (اسم وصور)</option>
+          <option value="no-arabic-title">بدون اسم عربي</option>
+          <option value="no-artwork">بدون شعار أو خلفية</option>
         </select>
 
         <select
@@ -394,6 +459,15 @@ export default function ShowsPage() {
                 >
                   {STATUS_LABEL[s.status] ?? s.status}
                 </span>
+                <span
+                  className={`shrink-0 flex items-center gap-1 text-[11px] font-bold ${
+                    s.hasAnyPlayableStream ? 'text-emerald-400' : 'text-zinc-600'
+                  }`}
+                  title={s.hasAnyPlayableStream ? 'يملك رابط تشغيل فعّال على حلقة واحدة على الأقل' : 'قريبًا — بدون أي رابط تشغيل'}
+                >
+                  <PlayCircle size={14} />
+                  {s.hasAnyPlayableStream ? 'جاهز' : 'قريبًا'}
+                </span>
                 {s.hasIncompleteEpisodes && (
                   <span
                     className="shrink-0 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-400"
@@ -403,6 +477,13 @@ export default function ShowsPage() {
                   </span>
                 )}
               </Link>
+              <CompatMarkButtons
+                value={s.hasSourceMatch}
+                onSet={async (next) => {
+                  await adminService.updateShow(s.id, { hasSourceMatch: next });
+                  load();
+                }}
+              />
               <button
                 type="button"
                 disabled={busyId === s.id}

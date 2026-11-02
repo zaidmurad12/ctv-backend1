@@ -1,16 +1,20 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { CatalogModule } from '../catalog/catalog.module.js';
 import { ProvidersModule } from '../providers/providers.module.js';
 import { AdminController } from './admin.controller.js';
+import { HomeSectionsAdminController, HomeSectionsAdminService } from './homeSectionsAdmin.js';
+import { SourceCheckController, SourceCheckService } from './sourceCheck.js';
+import { SourceLatestAdminController, SourceLatestController, SourceLatestService } from './sourceLatest.js';
+import { TmdbLookupService } from './infrastructure/tmdbLookupService.js';
 import { StreamProxyController } from './streamProxy.controller.js';
 import { ArchiveOrgService } from './infrastructure/archiveOrgService.js';
 import { AdminMoviesRepository } from './infrastructure/adminMoviesRepository.js';
 import { AdminShowsRepository } from './infrastructure/adminShowsRepository.js';
 import { DashboardStatsRepository } from './infrastructure/dashboardStatsRepository.js';
-import { AudioSyncAnalysisService } from './infrastructure/audioSyncAnalysisService.js';
+import { CinemanaBackfillService } from './infrastructure/cinemanaBackfillService.js';
 import { MovieHashService } from './infrastructure/movieHashService.js';
 import { OpenSubtitlesService } from './infrastructure/openSubtitlesService.js';
-import { SyncIssueRepository } from '../catalog/infrastructure/syncIssueRepository.js';
 import { TmdbDiscoverService } from './infrastructure/tmdbDiscoverService.js';
 import { TmdbImportService } from './infrastructure/tmdbImportService.js';
 import {
@@ -18,22 +22,24 @@ import {
   AdminFeaturedUseCases,
   AdminMoviesUseCases,
   AdminShowsUseCases,
-  AdminSyncIssuesUseCases,
   AdminUsersUseCases,
   DashboardUseCases,
   ProvidersUseCases,
 } from './useCases.js';
 
 @Module({
-  imports: [AuthModule, ProvidersModule],
-  controllers: [AdminController, StreamProxyController],
+  imports: [AuthModule, ProvidersModule, CatalogModule],
+  controllers: [AdminController, StreamProxyController, HomeSectionsAdminController, SourceCheckController, SourceLatestController, SourceLatestAdminController],
   providers: [
+    HomeSectionsAdminService,
+    SourceCheckService,
+    SourceLatestService,
+    TmdbLookupService,
     AdminUsersUseCases,
     AdminMoviesUseCases,
     AdminShowsUseCases,
     AdminFeaturedUseCases,
     AdminDiscoverUseCases,
-    AdminSyncIssuesUseCases,
     DashboardUseCases,
     ProvidersUseCases,
     AdminMoviesRepository,
@@ -43,8 +49,7 @@ import {
     TmdbDiscoverService,
     OpenSubtitlesService,
     MovieHashService,
-    SyncIssueRepository,
-    AudioSyncAnalysisService,
+    CinemanaBackfillService,
     ArchiveOrgService,
   ],
 })

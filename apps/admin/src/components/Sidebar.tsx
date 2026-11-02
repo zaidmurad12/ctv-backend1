@@ -2,13 +2,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
-  AlertTriangle,
   Film,
   GalleryHorizontal,
   LayoutDashboard,
   LogOut,
   Menu,
   Radio,
+  ScanSearch,
   Sparkles,
   Tv,
   Users,
@@ -21,8 +21,9 @@ const NAV_ITEMS = [
   { href: '/movies', label: 'الأعمال', Icon: Film },
   { href: '/shows', label: 'المسلسلات', Icon: Tv },
   { href: '/discover', label: 'استيراد ذكي', Icon: Sparkles },
-  { href: '/sync-issues', label: 'مشاكل المزامنة', Icon: AlertTriangle },
+  { href: '/source-check', label: 'فحص التوافق', Icon: ScanSearch },
   { href: '/banner', label: 'البنر الرئيسي', Icon: GalleryHorizontal },
+  { href: '/home-sections', label: 'أقسام الشاشة الرئيسية', Icon: Sparkles },
   { href: '/providers', label: 'مزوّدو المحتوى', Icon: Radio },
   { href: '/users', label: 'المستخدمون', Icon: Users },
 ] as const;

@@ -17,10 +17,11 @@ import {
 } from 'lucide-react';
 import { AdminLayout } from '../../components/Sidebar';
 import { PreviewModal } from '../../components/PreviewModal';
+import { SourcePreview } from '../../components/SourcePreview';
+import { SeasonCompatibilityPanel } from '../../components/SeasonCompatibilityPanel';
 import { useAuth } from '../../context/AuthContext';
 import { adminService } from '../../services/adminService';
 import { readSubtitleFileAsText } from '../../lib/subtitleEncoding';
-import { syncStatusLabel } from '../../lib/syncStatus';
 import type {
   AdminEpisodeSummaryDto,
   AdminSeasonSummaryDto,
@@ -60,6 +61,7 @@ export default function ShowDetailPage() {
   const [saving, setSaving] = useState(false);
   const [reimporting, setReimporting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showSourcePreview, setShowSourcePreview] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -129,6 +131,28 @@ export default function ShowDetailPage() {
     }
   }
 
+  const [refreshingImages, setRefreshingImages] = useState(false);
+  async function refreshEpisodeImages() {
+    if (!id) return;
+    setRefreshingImages(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const r = await adminService.refreshShowEpisodeImages(id);
+      setMessage(
+        (r.mode === 'realigned'
+          ? `ترتيب المواسم هنا يختلف عن TMDB، فأعيدت مطابقة الحلقات بالتسلسل (الصور والعناوين والوصف): `
+          : 'صور الحلقات: ') +
+          `${r.updated} حُدّثت، ${r.unchanged} بدون تغيير، ${r.missing} بلا بيانات في TMDB.`,
+      );
+      load(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشلت إعادة استيراد صور الحلقات.');
+    } finally {
+      setRefreshingImages(false);
+    }
+  }
+
   async function removeShow() {
     if (!id || !show) return;
     if (!confirm(`حذف "${show.title}"؟`)) return;
@@ -177,6 +201,14 @@ export default function ShowDetailPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowSourcePreview(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-300 border border-sky-900 hover:bg-zinc-900 transition-colors"
+              >
+                <Eye size={12} />
+                معاينة من المصادر
+              </button>
+              <button
+                type="button"
                 disabled={reimporting}
                 onClick={() => void reimport()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-300 border border-zinc-800 hover:bg-zinc-900 transition-colors disabled:opacity-50"
@@ -187,6 +219,15 @@ export default function ShowDetailPage() {
                   <RefreshCw size={12} />
                 )}
                 إعادة استيراد من TMDB
+              </button>
+              <button
+                type="button"
+                disabled={refreshingImages}
+                onClick={() => void refreshEpisodeImages()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-300 border border-zinc-800 hover:bg-zinc-900 transition-colors disabled:opacity-50"
+              >
+                {refreshingImages ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                إعادة استيراد صور الحلقات
               </button>
               <button
                 type="button"
@@ -293,6 +334,8 @@ export default function ShowDetailPage() {
             </div>
           </section>
 
+          <SeasonCompatibilityPanel key={show.seasons.length + ':' + show.hasSourceMatch} show={show} onChanged={() => id && load(id)} />
+
           <section className="bg-[#0a0a0a] border border-zinc-800 rounded-2xl p-6">
             <h2 className="text-sm font-black mb-4">المواسم والحلقات</h2>
             <div className="space-y-4">
@@ -333,6 +376,24 @@ export default function ShowDetailPage() {
               )}
             </div>
           </section>
+
+          {showSourcePreview && (
+            <SourcePreview
+              title={show.title}
+              altTitle={show.titleAr}
+              kind="series"
+              linkedSources={show.sourceLinks}
+              onSaveLinks={async (links) => {
+                if (!id) return;
+                await adminService.updateShow(id, { sourceLinks: links });
+                load(id);
+              }}
+              poster={poster}
+              backdrop={backdrop}
+              logo={logo}
+              onClose={() => setShowSourcePreview(false)}
+            />
+          )}
 
           {showPreview && (
             <PreviewModal
@@ -665,7 +726,7 @@ function EpisodeRow({
                     {s.url}
                   </div>
                   <div className="text-[10px] text-zinc-500 mt-0.5">
-                    {s.format} · {syncStatusLabel(s)}
+                    {s.format}
                   </div>
                 </div>
                 <button

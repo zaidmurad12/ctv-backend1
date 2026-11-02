@@ -13,8 +13,7 @@ import { EpisodesController, SeasonsController } from './seasonsEpisodes.control
 import { PeopleController } from './people.controller.js';
 import { PersonQueryRepository } from './infrastructure/personQueryRepository.js';
 import { SubtitlesController } from './subtitles.controller.js';
-import { SyncIssuesController } from './syncIssues.controller.js';
-import { SyncIssueRepository } from './infrastructure/syncIssueRepository.js';
+import { HomeSectionsController, HomeSectionsUseCases } from './homeSections.js';
 import {
   EpisodesUseCases,
   MoviesUseCases,
@@ -27,15 +26,16 @@ import {
   imports: [ProvidersModule],
   controllers: [
     MoviesController,
+    HomeSectionsController,
     ShowsController,
     SeasonsController,
     EpisodesController,
     SubtitlesController,
-    SyncIssuesController,
     PeopleController,
   ],
   providers: [
     MovieQueryRepository,
+    HomeSectionsUseCases,
     ShowQueryRepository,
     SeasonQueryRepository,
     EpisodeQueryRepository,
@@ -46,9 +46,9 @@ import {
     EpisodesUseCases,
     PeopleUseCases,
     OpenSubtitlesService,
-    SyncIssueRepository,
   ],
   exports: [
+    HomeSectionsUseCases,
     MovieQueryRepository,
     ShowQueryRepository,
     SeasonQueryRepository,

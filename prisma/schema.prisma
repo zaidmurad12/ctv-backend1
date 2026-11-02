@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -66,12 +66,29 @@ enum SettingTypeEnum {
   JSON
 }
 
+enum SourceSiteEnum {
+  CEE
+  CINEMANA
+}
+
+enum SourceKindEnum {
+  MOVIE
+  SERIES
+}
+
+enum SourceMatchStatusEnum {
+  PENDING
+  MATCHED
+  UNMATCHED
+  SKIPPED
+}
+
 model Provider {
-  id               String            @id @default(uuid())
-  name             String            @db.VarChar(255)
-  slug             String            @unique @db.VarChar(100)
-  version          String            @db.VarChar(50)
-  baseUrl          String?           @db.VarChar(500)
+  id               String            @id @default(auto()) @map("_id") @db.ObjectId
+  name             String           
+  slug             String            @unique
+  version          String           
+  baseUrl          String?          
   isEnabled        Boolean           @default(true)
   priority         Int               @default(10)
   healthStatus     ProviderStatusEnum @default(UNKNOWN)
@@ -86,45 +103,63 @@ model Provider {
   episodeProviders EpisodeProvider[]
   importJobs       ImportJob[]
   syncJobs         SyncJob[]
-
-  @@index([slug])
   @@index([isEnabled, priority])
   @@index([healthStatus])
 }
 
 model Movie {
-  id                 String           @id @default(uuid())
+  id                 String           @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId             String?          @unique
   imdbId             String?          @unique
-  title              String           @db.VarChar(500)
-  originalTitle      String?          @db.VarChar(500)
-  overview           String?          @db.Text
+  title              String          
+  originalTitle      String?         
+  overview           String?         
   // TMDB's own community-contributed Arabic translation when it has one (see
   // extractArabicTranslation in bootstrap-importer.mjs) - free and often already correct, unlike
   // biographyAr which has no such source and needs a real (quota-limited) Gemini call every time.
   // Only actually Gemini-translated as a fallback when TMDB has no Arabic overview on file.
-  overviewAr         String?          @db.Text
-  tagline            String?          @db.VarChar(500)
+  overviewAr         String?         
+  tagline            String?         
   releaseDate        DateTime?
   runtime            Int?
   status             MovieStatusEnum  @default(PENDING)
-  rating             Decimal?         @db.Decimal(4, 2)
+  rating             Float?
   voteCount          Int              @default(0)
-  ageRating          String?          @db.VarChar(50)
-  originalLanguage   String?          @db.VarChar(10)
-  poster             String?          @db.VarChar(1000)
-  backdrop           String?          @db.VarChar(1000)
-  logo               String?          @db.VarChar(1000)
-  trailer            String?          @db.VarChar(1000)
-  popularity         Decimal?         @db.Decimal(10, 2)
-  homepage           String?          @db.VarChar(1000)
+  ageRating          String?         
+  originalLanguage   String?         
+  poster             String?         
+  backdrop           String?         
+  logo               String?         
+  trailer            String?         
+  popularity         Float?
+  homepage           String?         
   budget             BigInt?
   revenue            BigInt?
-  titleAr            String?          @db.VarChar(500)
+  titleAr            String?         
   // Null = not in the home hero/banner carousel; otherwise its position there (0 = first).
   // Set exclusively through the admin panel's banner-management page - never by the TMDB
   // importer, so re-importing a movie never disturbs a curated banner selection.
   featuredOrder      Int?
+  // Admin-chosen CEE/Cinemana entries this title plays from: [{ source: "cee"|"cinemana", nb, kind: "movie"|"series" }].
+  // Lets a title be pinned to the right source entry when automatic title matching cannot find it - e.g. a
+  // stage play a source lists under its SERIES section (kind "series") although it is a movie here.
+  sourceLinks        Json?
+  homeSectionItems   HomeSectionItem[]
+  // ScheduledImportService's own bookkeeping (see its subtitleBackfill/healthCheck comments) -
+  // null until that pass has ever looked at this movie once. Lets each pass rotate through
+  // oldest-checked-first and skip a movie it already tried recently, instead of re-searching the
+  // same not-found title (or re-probing the same still-dead link) on every single run forever.
+  subtitleBackfillCheckedAt DateTime?
+  streamHealthCheckedAt     DateTime?
+  // Whether this movie was found on CEE/Cinemana by title/IMDb match (see
+  // ScheduledImportService's own sourceMatchCheck) - only ever populated for movies with no
+  // active stream of their own yet, since a movie that already plays doesn't need this. Null
+  // means "not checked yet", not "no match" - the admin list's own filter treats those
+  // differently (see AdminListMoviesQueryDto's own comment). Lets the admin panel show which
+  // sourceless titles the app can still actually play live (a real source match exists, just
+  // never pulled into a stored Stream row) versus which ones are genuinely dead.
+  hasSourceMatch            Boolean?
+  sourceMatchCheckedAt      DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -144,9 +179,7 @@ model Movie {
   watchHistory       WatchHistory[]
   continueWatching   ContinueWatching[]
   syncIssue          SyncIssue?
-
-  @@index([tmdbId])
-  @@index([imdbId])
+  sourceCatalogItems SourceCatalogItem[]
   @@index([title])
   @@index([releaseDate])
   @@index([status])
@@ -154,33 +187,43 @@ model Movie {
 }
 
 model TVShow {
-  id                 String           @id @default(uuid())
+  id                 String           @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId             String?          @unique
   imdbId             String?          @unique
-  title              String           @db.VarChar(500)
-  originalTitle      String?          @db.VarChar(500)
-  overview           String?          @db.Text
+  title              String          
+  originalTitle      String?         
+  overview           String?         
   // See Movie.overviewAr's own comment - same TMDB-translation-first, Gemini-fallback source.
-  overviewAr         String?          @db.Text
+  overviewAr         String?         
   status             MovieStatusEnum  @default(PENDING)
   releaseDate        DateTime?
   lastAirDate        DateTime?
   numberOfSeasons    Int              @default(0)
   numberOfEpisodes   Int              @default(0)
-  rating             Decimal?         @db.Decimal(4, 2)
+  rating             Float?
   voteCount          Int              @default(0)
-  ageRating          String?          @db.VarChar(50)
-  originalLanguage   String?          @db.VarChar(10)
-  poster             String?          @db.VarChar(1000)
-  backdrop           String?          @db.VarChar(1000)
-  logo               String?          @db.VarChar(1000)
-  homepage           String?          @db.VarChar(1000)
-  popularity         Decimal?         @db.Decimal(10, 2)
-  titleAr            String?          @db.VarChar(500)
+  ageRating          String?         
+  originalLanguage   String?         
+  poster             String?         
+  backdrop           String?         
+  logo               String?         
+  homepage           String?         
+  popularity         Float?
+  titleAr            String?         
   // Null = not in the home hero/banner carousel; otherwise its position there (0 = first) -
   // same convention as Movie.featuredOrder (see its own comment), merged with movies' own
   // ordering at read time since the carousel can mix both.
   featuredOrder      Int?
+  // Admin-chosen CEE/Cinemana entries this show plays from (see Movie.sourceLinks) - overrides the app's automatic title matching.
+  sourceLinks        Json?
+  homeSectionItems   HomeSectionItem[]
+  // Set by the admin "restructure seasons" tool: this show's season/episode layout was hand-arranged
+  // to match the playback sources (e.g. Money Heist as 5 parts, not TMDB's 3 seasons). A TMDB
+  // reimport must not rebuild seasons/episodes from TMDB's own grouping while this is true.
+  seasonLayoutCustom Boolean          @default(false)
+  // Manually marked by an admin after testing in the app (true = plays from a source, false =
+  // tested and does not, null = not tested yet) - see Movie.hasSourceMatch.
+  hasSourceMatch     Boolean?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -197,8 +240,7 @@ model TVShow {
   favorites          Favorite[]
   watchHistory       WatchHistory[]
   continueWatching   ContinueWatching[]
-
-  @@index([tmdbId])
+  sourceCatalogItems SourceCatalogItem[]
   @@index([title])
   @@index([releaseDate])
   @@index([status])
@@ -206,12 +248,12 @@ model TVShow {
 }
 
 model Season {
-  id             String    @id @default(uuid())
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
   showId         String
   seasonNumber   Int
-  name           String?   @db.VarChar(500)
-  overview       String?   @db.Text
-  poster         String?   @db.VarChar(1000)
+  name           String?  
+  overview       String?  
+  poster         String?  
   airDate        DateTime?
   episodeCount   Int       @default(0)
   createdAt      DateTime  @default(now())
@@ -226,24 +268,24 @@ model Season {
 }
 
 model Episode {
-  id             String    @id @default(uuid())
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
   seasonId       String
   episodeNumber  Int
-  title          String    @db.VarChar(500)
-  overview       String?   @db.Text
+  title          String   
+  overview       String?  
   // Fetched via a second per-season TMDB request with language=ar (see importShow in
   // bootstrap-importer.mjs) rather than Gemini - one extra call covers every episode in the
   // season at once, and TMDB frequently already has these for popular shows. Left null (falls
   // back to the English title/overview in the app) when TMDB has no Arabic data for an episode -
   // not Gemini-translated, unlike Movie/TVShow's own overviewAr, since doing that per episode
   // would multiply Gemini's already-tight quota by the show's entire episode count.
-  titleAr        String?   @db.VarChar(500)
-  overviewAr     String?   @db.Text
+  titleAr        String?  
+  overviewAr     String?  
   runtime        Int?
   airDate        DateTime?
-  rating         Decimal?  @db.Decimal(4, 2)
+  rating         Float?
   voteCount      Int       @default(0)
-  stillImage     String?   @db.VarChar(1000)
+  stillImage     String?  
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -259,12 +301,12 @@ model Episode {
 }
 
 model MovieProvider {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   movieId       String
   providerId    String
-  externalId    String?   @db.VarChar(255)
-  sourceTitle   String?   @db.VarChar(500)
-  sourceUrl     String?   @db.VarChar(2000)
+  externalId    String?  
+  sourceTitle   String?  
+  sourceUrl     String?  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -279,12 +321,12 @@ model MovieProvider {
 }
 
 model TVShowProvider {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   showId        String
   providerId    String
-  externalId    String?   @db.VarChar(255)
-  sourceTitle   String?   @db.VarChar(500)
-  sourceUrl     String?   @db.VarChar(2000)
+  externalId    String?  
+  sourceTitle   String?  
+  sourceUrl     String?  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -299,12 +341,12 @@ model TVShowProvider {
 }
 
 model EpisodeProvider {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   episodeId     String
   providerId    String
-  externalId    String?   @db.VarChar(255)
-  sourceTitle   String?   @db.VarChar(500)
-  sourceUrl     String?   @db.VarChar(2000)
+  externalId    String?  
+  sourceTitle   String?  
+  sourceUrl     String?  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -319,15 +361,15 @@ model EpisodeProvider {
 }
 
 model Stream {
-  id                 String            @id @default(uuid())
+  id                 String            @id @default(auto()) @map("_id") @db.ObjectId
   movieProviderId    String?
   episodeProviderId  String?
   showProviderId     String?
-  quality            String            @db.VarChar(100)
-  codec              String?           @db.VarChar(100)
-  language           String?           @db.VarChar(50)
-  serverName         String?           @db.VarChar(255)
-  streamUrl          String            @db.VarChar(2000)
+  quality            String           
+  codec              String?          
+  language           String?          
+  serverName         String?          
+  streamUrl          String           
   isDefault          Boolean           @default(false)
   isActive           Boolean           @default(true)
   createdAt          DateTime          @default(now())
@@ -346,13 +388,13 @@ model Stream {
 }
 
 model Subtitle {
-  id                 String            @id @default(uuid())
+  id                 String            @id @default(auto()) @map("_id") @db.ObjectId
   movieProviderId    String?
   episodeProviderId  String?
   showProviderId     String?
-  language           String            @db.VarChar(50)
-  format             String            @db.VarChar(20)
-  url                String            @db.VarChar(2000)
+  language           String           
+  format             String           
+  url                String           
   isDefault          Boolean           @default(false)
   // Set only for subtitles resolved through OpenSubtitles (see OpenSubtitlesService) - their
   // download links expire quickly, so `url` here points at this backend's own stable
@@ -360,14 +402,14 @@ model Subtitle {
   // re-resolves a fresh download link from OpenSubtitles using this file id every time the app
   // actually calls it, rather than this server ever downloading/storing the subtitle file
   // itself. Manually admin-added subtitles leave this null and use `url` directly as-is.
-  externalFileId     String?           @db.VarChar(255)
+  externalFileId     String?          
   // Last real OpenSubtitles download link resolved for externalFileId, plus when. Used two
   // ways: (1) skip re-resolving (and burning OpenSubtitles' daily download quota) if the cached
   // link is still within RESOLVE_CACHE_TTL of subtitles.controller.ts; (2) serve as a fallback
   // when a fresh resolve fails (quota exhausted, network error) so playback still gets *a*
   // working link instead of the resolve endpoint redirecting to itself - the actual cause of
   // subtitles silently never appearing in the app despite the row existing.
-  resolvedUrl        String?           @db.VarChar(2000)
+  resolvedUrl        String?          
   // The actual subtitle file contents, fetched once and kept forever. OpenSubtitles' free-tier
   // key gets an observed daily *download* quota in the single digits (~5-10), completely
   // separate from - and far smaller than - its search quota; re-resolving the same file every
@@ -377,20 +419,30 @@ model Subtitle {
   // text from it isn't - persisting that text here means each externalFileId ever costs the
   // quota exactly once, for its entire lifetime, not once per cache window.
   resolvedContent    String?
-  // Computed once, automatically, by audioSyncAnalysisService.ts right after this row is
-  // created (import/hash-match/manual upload - see its own call sites) - the same two-point
-  // audio-vs-cue correlation the app's own in-player auto-sync button runs on a viewer's device,
-  // just run here once so every viewer gets a correctly-synced subtitle by default instead of
-  // each one having to discover and locally work around the same mismatch independently (see
-  // SyncIssue's own comment for the reactive, per-viewer alternative this exists to avoid needing
-  // as often). The app applies these unless the viewer has already saved their own local
-  // override for this exact title (see VideoPlayer.tsx).
+  // Sampled at several points across the runtime (not just two) by audioSyncAnalysisService.ts,
+  // right after this row is created (import/hash-match/manual upload - see its own call sites) -
+  // each entry is `{ tMs, offsetMs }`, the real detected correction *at that point in the video*,
+  // sorted ascending by tMs. The app interpolates between the two nearest anchors instead of
+  // applying one constant offset+speed pair everywhere (see VideoPlayer.tsx's correctedSubtitleTime
+  // usage) - a single global linear fit (the old defaultOffsetMs/defaultSpeed below) can only ever
+  // be right at one moment or drift smoothly; it can't represent a subtitle that's fine for a while
+  // and then jumps to a different fixed offset, which is exactly what a subtitle authored for a
+  // *different cut* of the same title (a trimmed/extended intro, an inserted/removed recap or ad
+  // break) produces - reported as "matches in one part of the movie, not another." Null until
+  // analysis has run at least once, or if every sample point failed to find a confident match.
+  syncAnchors        Json?
+  // The single-point/single-line predecessor to syncAnchors above - kept only as a legacy
+  // fallback for whatever a subtitle's own analysis hasn't been (or couldn't be) computed as
+  // anchors for (see VideoPlayer.tsx: used only when syncAnchors is null/empty). New analyses
+  // still populate this too - defaultOffsetMs mirrors the first anchor, defaultSpeed stays 1 -
+  // purely so nothing still reading these two fields directly (e.g. an admin panel display) sees
+  // a stale, no-longer-produced value.
   defaultOffsetMs    Int               @default(0)
   defaultSpeed       Float             @default(1)
   // "pending" until the (fire-and-forget, can take a minute or two) analysis finishes -
   // "done"/"failed" after. Lets the admin panel show real status instead of a defaultOffsetMs of
   // 0 being ambiguous with "analyzed and genuinely no correction needed."
-  syncAnalysisStatus String            @default("pending") @db.VarChar(20)
+  syncAnalysisStatus String            @default("pending")
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -413,7 +465,7 @@ model Subtitle {
 // new report even after being marked resolved once - a repeat complaint after a fix means the fix
 // didn't actually hold (or was for a different release), not that it's safe to ignore again.
 model SyncIssue {
-  id              String   @id @default(uuid())
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
   movieId         String?  @unique
   episodeId       String?  @unique
   offsetMs        Int
@@ -430,24 +482,22 @@ model SyncIssue {
 }
 
 model Genre {
-  id            String           @id @default(uuid())
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId        String?          @unique
-  name          String           @unique @db.VarChar(255)
-  slug          String           @unique @db.VarChar(255)
+  name          String           @unique
+  slug          String           @unique
 
   movies        MovieGenre[]
   shows         TVShowGenre[]
-
-  @@index([name])
 }
 
 model Collection {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId        String?   @unique
-  title         String    @db.VarChar(500)
-  overview      String?   @db.Text
-  poster        String?   @db.VarChar(1000)
-  backdrop      String?   @db.VarChar(1000)
+  title         String   
+  overview      String?  
+  poster        String?  
+  backdrop      String?  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -458,21 +508,21 @@ model Collection {
 }
 
 model Person {
-  id            String               @id @default(uuid())
+  id            String               @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId        String?              @unique
-  name          String               @db.VarChar(500)
+  name          String              
   birthday      DateTime?
   deathday      DateTime?
-  biography     String?              @db.Text
+  biography     String?             
   // Gemini-translated from `biography` - TMDB itself rarely has an Arabic translation for a
   // person's biography specifically (unlike a movie's own title/overview, which usually does).
-  biographyAr   String?              @db.Text
+  biographyAr   String?             
   // TMDB's own free-text field (e.g. "Los Angeles, California, USA") - not normalized to a
   // Country row like Movie/TVShow's own production countries, since a person's birthplace is
   // display-only here and TMDB doesn't return it in a structured form worth splitting up.
-  placeOfBirth  String?              @db.VarChar(500)
-  photo         String?              @db.VarChar(1000)
-  popularity    Decimal?             @db.Decimal(10, 2)
+  placeOfBirth  String?             
+  photo         String?             
+  popularity    Float?
   // How many times prisma/backfill-person-details.mjs has checked this row and found nothing on
   // TMDB (see that script's own comment) - most of these never actually gain a detail later, so
   // retrying forever just burns that script's run budget on rows that will realistically never
@@ -493,12 +543,12 @@ model Person {
 }
 
 model Company {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   tmdbId        String?   @unique
-  name          String    @db.VarChar(500)
-  logo          String?   @db.VarChar(1000)
-  country       String?   @db.VarChar(100)
-  homepage      String?   @db.VarChar(1000)
+  name          String   
+  logo          String?  
+  country       String?  
+  homepage      String?  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -509,10 +559,10 @@ model Company {
 }
 
 model Country {
-  id            String    @id @default(uuid())
-  isoCode       String    @unique @db.VarChar(10)
-  name          String    @db.VarChar(255)
-  nativeName    String?   @db.VarChar(255)
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  isoCode       String    @unique
+  name          String   
+  nativeName    String?  
 
   movies        MovieCountry[]
   shows         TVShowCountry[]
@@ -521,10 +571,10 @@ model Country {
 }
 
 model Language {
-  id            String    @id @default(uuid())
-  isoCode       String    @unique @db.VarChar(10)
-  englishName   String    @db.VarChar(255)
-  nativeName    String?   @db.VarChar(255)
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  isoCode       String    @unique
+  englishName   String   
+  nativeName    String?  
   rtl           Boolean   @default(false)
 
   movies        MovieLanguage[]
@@ -534,14 +584,14 @@ model Language {
 }
 
 model Image {
-  id            String        @id @default(uuid())
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
   movieId       String?
   showId        String?
   type          ImageTypeEnum
   width         Int?
   height        Int?
-  url           String        @db.VarChar(2000)
-  provider      String        @db.VarChar(255)
+  url           String       
+  provider      String       
   createdAt     DateTime      @default(now())
 
   movie         Movie?        @relation(fields: [movieId], references: [id], onDelete: Cascade)
@@ -553,14 +603,14 @@ model Image {
 }
 
 model ImportJob {
-  id            String           @id @default(uuid())
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
   providerId    String
   status        ImportStatusEnum @default(PENDING)
   startedAt     DateTime?
   finishedAt    DateTime?
   processed     Int              @default(0)
   failed        Int              @default(0)
-  logs          String?          @db.Text
+  logs          String?         
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -572,7 +622,7 @@ model ImportJob {
 }
 
 model SyncJob {
-  id               String        @id @default(uuid())
+  id               String        @id @default(auto()) @map("_id") @db.ObjectId
   providerId       String
   startedAt        DateTime?
   finishedAt       DateTime?
@@ -590,11 +640,84 @@ model SyncJob {
   @@index([createdAt])
 }
 
+// One row per distinct (source, kind, nb) ever seen while paging cee.buzz's or
+// cinemana.shabakaty.com's own AdvancedSearch?videoTitle=&page=N catalog browse (an empty
+// videoTitle returns every title on that source, not a search result - see ScheduledImportService).
+// Discovery (cheap, paged metadata only) and enrichment (TMDB match + import + stream/subtitle
+// attach, quota-limited) are two separate steps precisely so this table can hold "known about but
+// not yet processed" state - that split is what makes backlog catch-up and steady-state "just new
+// releases" the same code path with no explicit mode flag (see ScheduledImportService's own comment).
+model SourceCatalogItem {
+  id             String                 @id @default(auto()) @map("_id") @db.ObjectId
+  source         SourceSiteEnum
+  kind           SourceKindEnum
+  nb             String                
+  enTitle        String?               
+  arTitle        String?               
+  year           Int?
+  // Extracted from the listing's imdbUrlRef via the same regex CinemanaTVRN's extractImdbId
+  // uses - null when the source item has no imdbUrlRef at all, which is when the fuzzy
+  // title-similarity fallback runs instead of the exact TMDB find-by-imdb lookup.
+  imdbId         String?               
+  status         SourceMatchStatusEnum  @default(PENDING)
+  matchMethod    String?               
+  matchScore     Int?
+  matchedMovieId String?
+  matchedShowId  String?
+  attempts       Int                    @default(0)
+  lastAttemptAt  DateTime?
+  // Null while PENDING/MATCHED/SKIPPED; set only on UNMATCHED, to lastAttemptAt plus the
+  // configured retry window - re-checked by every enrichment pass's UNMATCHED query so a title
+  // with no TMDB match today isn't skipped forever, just deferred.
+  nextRetryAt    DateTime?
+  discoveredAt   DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  matchedMovie   Movie?                 @relation(fields: [matchedMovieId], references: [id], onDelete: SetNull)
+  matchedShow    TVShow?                @relation(fields: [matchedShowId], references: [id], onDelete: SetNull)
+
+  @@unique([source, kind, nb])
+  @@index([status, nextRetryAt])
+  @@index([imdbId])
+  @@index([matchedMovieId])
+  @@index([matchedShowId])
+}
+
+// One row per (source, kind) - 4 total (cee-movie, cee-series, cinemana-movie, cinemana-series).
+// nextPage is the next AdvancedSearch page to request; caughtUp flips true the first time a page
+// comes back empty, and the sweep keeps re-requesting exactly that same page on every future run
+// (one cheap request) until the source catalog grows again and it stops being empty.
+model SourceCatalogCursor {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  source      SourceSiteEnum
+  kind        SourceKindEnum
+  nextPage    Int            @default(1)
+  caughtUp    Boolean        @default(false)
+  lastSweptAt DateTime?
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([source, kind])
+}
+
+// Progress bookkeeping for ScheduledImportService's TMDB-first popularity import (independent of
+// CEE/Cinemana entirely - see its own comment). One row per (kind, language bucket): nextPage is
+// the next TMDB /discover page (popularity-sorted) to consume; wraps back to 1 once TMDB's own
+// 500-page cap or an empty page is hit, so a later run re-scans and picks up anything newly popular.
+model TmdbDiscoveryCursor {
+  id        String         @id @default(auto()) @map("_id") @db.ObjectId
+  kind      SourceKindEnum
+  bucket    String        
+  nextPage  Int            @default(1)
+  updatedAt DateTime       @updatedAt
+
+  @@unique([kind, bucket])
+}
+
 model User {
-  id            String           @id @default(uuid())
-  email         String           @unique @db.VarChar(320)
-  username      String           @unique @db.VarChar(255)
-  passwordHash  String           @db.VarChar(500)
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  email         String           @unique
+  username      String           @unique
+  passwordHash  String          
   roleId        String
   isActive      Boolean          @default(true)
   createdAt     DateTime         @default(now())
@@ -605,16 +728,13 @@ model User {
   watchHistory  WatchHistory[]
   continueWatching ContinueWatching[]
   refreshTokens RefreshToken[]
-
-  @@index([email])
-  @@index([username])
   @@index([isActive])
 }
 
 model RefreshToken {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   userId        String
-  tokenHash     String    @db.VarChar(255)
+  tokenHash     String   
   expiresAt     DateTime
   revokedAt     DateTime?
   createdAt     DateTime  @default(now())
@@ -627,7 +747,7 @@ model RefreshToken {
 }
 
 model Role {
-  id            String      @id @default(uuid())
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
   name          UserRoleEnum @unique
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -636,7 +756,7 @@ model Role {
 }
 
 model Favorite {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   userId        String
   movieId       String?
   showId        String?
@@ -652,7 +772,7 @@ model Favorite {
 }
 
 model WatchHistory {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   userId        String
   movieId       String?
   episodeId     String?
@@ -673,7 +793,7 @@ model WatchHistory {
 }
 
 model ContinueWatching {
-  id            String    @id @default(uuid())
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   userId        String
   movieId       String?
   episodeId     String?
@@ -692,155 +812,219 @@ model ContinueWatching {
 }
 
 model Setting {
-  id            String        @id @default(uuid())
-  key           String        @unique @db.VarChar(255)
-  value         String        @db.Text
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  key           String        @unique
+  value         String       
   type          SettingTypeEnum @default(STRING)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-
-  @@index([key])
 }
 
 model MovieGenre {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId   String
   genreId   String
 
   movie     Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
   genre     Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, genreId])
+  @@unique([movieId, genreId])
   @@index([genreId])
 }
 
 model TVShowGenre {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId    String
   genreId   String
 
   show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
   genre     Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
 
-  @@id([showId, genreId])
+  @@unique([showId, genreId])
   @@index([genreId])
 }
 
 model MovieCompany {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId   String
   companyId String
 
   movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, companyId])
+  @@unique([movieId, companyId])
   @@index([companyId])
 }
 
 model TVShowCompany {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId    String
   companyId String
 
   show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@id([showId, companyId])
+  @@unique([showId, companyId])
   @@index([companyId])
 }
 
 model MovieCountry {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId   String
   countryId String
 
   movie     Movie   @relation(fields: [movieId], references: [id], onDelete: Cascade)
   country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, countryId])
+  @@unique([movieId, countryId])
   @@index([countryId])
 }
 
 model TVShowCountry {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId    String
   countryId String
 
   show      TVShow  @relation(fields: [showId], references: [id], onDelete: Cascade)
   country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
 
-  @@id([showId, countryId])
+  @@unique([showId, countryId])
   @@index([countryId])
 }
 
 model MovieLanguage {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId    String
   languageId String
 
   movie      Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
   language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, languageId])
+  @@unique([movieId, languageId])
   @@index([languageId])
 }
 
 model TVShowLanguage {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId     String
   languageId String
 
   show       TVShow   @relation(fields: [showId], references: [id], onDelete: Cascade)
   language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
 
-  @@id([showId, languageId])
+  @@unique([showId, languageId])
   @@index([languageId])
 }
 
 model MovieCastMember {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId   String
   personId  String
-  character String? @db.VarChar(500)
+  character String?
   order     Int     @default(0)
 
   movie     Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
   person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, personId])
+  @@unique([movieId, personId])
   @@index([personId])
   @@index([order])
 }
 
 model MovieCrewMember {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   movieId   String
   personId  String
-  role      String  @db.VarChar(100)
+  role      String 
 
   movie     Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
   person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  @@id([movieId, personId, role])
+  @@unique([movieId, personId, role])
   @@index([personId])
   @@index([role])
 }
 
 model TVShowCastMember {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId    String
   personId  String
-  character String? @db.VarChar(500)
+  character String?
   order     Int     @default(0)
 
   show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
   person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  @@id([showId, personId])
+  @@unique([showId, personId])
   @@index([personId])
   @@index([order])
 }
 
 model TVShowCrewMember {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
   showId    String
   personId  String
-  role      String  @db.VarChar(100)
+  role      String 
 
   show      TVShow @relation(fields: [showId], references: [id], onDelete: Cascade)
   person    Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  @@id([showId, personId, role])
+  @@unique([showId, personId, role])
   @@index([personId])
   @@index([role])
 }
 
+
+// The home screen's rows, fully admin-managed: order, visibility, titles, and what fills each one.
+// RECENT/POPULAR/TOP_RATED/SERIES are computed live from the catalog (same lists the app always
+// built itself); CUSTOM rows hold an explicit, ordered item list - hand-picked, or imported from a
+// TMDB list/preset/discover query (see HomeSectionsAdminService). No rows at all = the app falls
+// back to those four defaults.
+enum HomeSectionKindEnum {
+  RECENT
+  POPULAR
+  TOP_RATED
+  SERIES
+  CUSTOM
+  // A rule-driven row: "newest / top-rated / most-popular movies (or shows) in language X" - computed live
+  // from the catalog on every request, so it always reflects what is actually there (see HomeSection.rule).
+  RULE
+}
+
+model HomeSection {
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  kind         HomeSectionKindEnum @default(CUSTOM)
+  titleAr      String             
+  titleEn      String             
+  sortOrder    Int                 @default(0)
+  isVisible    Boolean             @default(true)
+  maxItems     Int                 @default(20)
+  // Only for kind RULE: { media: "movie"|"series"|"all", sort: "newest"|"rating"|"popularity", language?, genre?, minVotes? }
+  rule         Json?
+  // Import bookkeeping for CUSTOM rows filled from TMDB (importStatus: IMPORTING | DONE | FAILED).
+  importSource String?            
+  importStatus String?            
+  importTotal  Int                 @default(0)
+  importDone   Int                 @default(0)
+  importError  String?            
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  items        HomeSectionItem[]
+
+  @@index([sortOrder])
+}
+
+model HomeSectionItem {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  sectionId String
+  movieId   String?
+  showId    String?
+  position  Int
+
+  section   HomeSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  movie     Movie?      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  show      TVShow?     @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, position])
+}

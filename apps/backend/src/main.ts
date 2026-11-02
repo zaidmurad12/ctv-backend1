@@ -30,6 +30,11 @@ async function bootstrap(): Promise<void> {
   // uploads" - a plain 413 rejected before the request ever reached the controller). Disabling
   // the automatic one and registering these instead is the documented way to raise that limit.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  // Cloud Run terminates TLS at its own edge and forwards plain HTTP internally, with the original
+  // scheme only preserved in X-Forwarded-Proto - without this, req.protocol (used by
+  // AppUpdateController to build the APK's own download URL) always reads back "http", which the
+  // app's Settings screen would then hand to Linking.openURL as an insecure link.
+  app.set('trust proxy', true);
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
@@ -43,6 +48,14 @@ async function bootstrap(): Promise<void> {
   // (and any future importer artwork) outside the API prefix so player <track>
   // URLs work with a plain static path, not versioned API routes.
   app.useStaticAssets(path.resolve(__dirname, '../../../storage'), { prefix: '/static/' });
+
+  // apps/backend/dist/main.js -> apps/backend -> release-assets/. The latest release APK the
+  // Android TV app's own Settings screen offers as an in-app update - see
+  // app-update/appVersion.ts for the version numbers this file must match, and this same
+  // release-assets folder's own note for how a new build gets published here. Plain static
+  // serving (not a custom download endpoint) gets range-request/resume support for a large file
+  // for free.
+  app.useStaticAssets(path.resolve(__dirname, '../release-assets'), { prefix: '/downloads/' });
 
   if (config.swaggerEnabled) {
     const document = SwaggerModule.createDocument(

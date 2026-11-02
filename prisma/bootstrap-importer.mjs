@@ -80,7 +80,7 @@ const MAX_EPISODES_PER_SHOW = Number(process.env.BOOTSTRAP_MAX_EPISODES_PER_SHOW
 // the same import (the admin panel's "reimport" button) re-checks every season/episode against
 // today, so one already exists to add each one the moment it crosses into this window - that's
 // the "update seasons and episodes" mechanism, not a separate one.
-const AIR_DATE_IMPORT_HORIZON_DAYS = 7;
+const AIR_DATE_IMPORT_HORIZON_DAYS = 60;
 
 /** No date at all = an unannounced episode/season, deliberately left out until it actually has one. */
 function isAirDateImportable(dateStr) {
@@ -229,7 +229,7 @@ export async function translateToArabic(text) {
 // get the reverse. Requires the detail fetch to have actually requested multiple image
 // languages in the first place (include_image_language=en,ar,null - see importMovie/importShow
 // below), since TMDB's default `images` response otherwise only carries one language's set.
-function pickImageByLang(images, originalLanguage) {
+export function pickImageByLang(images, originalLanguage) {
   if (!images || images.length === 0) return null;
   const preferred = originalLanguage === 'ar' ? ['ar', 'en'] : ['en', 'ar'];
   for (const lang of preferred) {
@@ -237,6 +237,71 @@ function pickImageByLang(images, originalLanguage) {
     if (hit) return hit.file_path;
   }
   return images[0].file_path;
+}
+
+// Horizontal backdrop for the app's hero/detail banners: prefers a textless ("general", TMDB's
+// iso_639_1 == null) image over one with a language's title/tagline baked in - this used to just
+// take TMDB's first-listed backdrop, which was frequently an English-lettered one - then the
+// highest-voted, and prefers >= 1920px wide so it stays sharp full-screen on a TV. Falls back
+// step by step (textless any size -> any 1920+ -> anything) rather than ever returning nothing.
+// Artwork is chosen once, when a title is first imported (poster with its title lettered in the
+// title's language, textless backdrop, logo) and never replaced afterwards: a re-import used to
+// delete and re-pick every image, and TMDB's votes shift over time, so titles kept getting a
+// different poster or backdrop (owner: "keep every poster as it is"). A missing type is still
+// filled in. The scalar columns keep their value too (the logo one carries the #dark/#light mark).
+async function keepExistingArtwork(model, tmdbId, fields) {
+  const existing = await model.findUnique({ where: { tmdbId }, select: { poster: true, backdrop: true, logo: true } });
+  if (!existing) return fields;
+  const update = { ...fields };
+  for (const key of ['poster', 'backdrop', 'logo']) {
+    if (existing[key]) delete update[key];
+  }
+  return update;
+}
+
+async function addMissingImages(owner, imageRows) {
+  if (!imageRows.length) return;
+  const have = new Set((await prisma.image.findMany({ where: owner, select: { type: true } })).map((img) => img.type));
+  const missing = imageRows.filter((row) => !have.has(row.type));
+  if (missing.length) await prisma.image.createMany({ data: missing });
+}
+
+export function pickBackdrop(backdrops, fallbackPath) {
+  if (!backdrops || backdrops.length === 0) return fallbackPath ?? null;
+  const score = (b) => (b.vote_average ?? 0) * 10 + Math.log10((b.vote_count ?? 0) + 1);
+  const best = (list) => [...list].sort((a, b) => score(b) - score(a))[0];
+  const hiRes = (b) => (b.width ?? 0) >= 1920;
+  const textless = backdrops.filter((b) => b.iso_639_1 == null);
+  const tiers = [textless.filter(hiRes), textless, backdrops.filter(hiRes), backdrops];
+  const tier = tiers.find((list) => list.length > 0);
+  return best(tier).file_path;
+}
+
+// Title logos carry baked-in lettering, so only languages whose script is readable to this audience
+// are considered - Latin-script ones (Turkish, Spanish, German, French, ...) plus Arabic. Logos in
+// Japanese/Korean/Chinese/Cyrillic/Thai/Hindi/etc. would show up as unreadable glyphs, so those
+// languages are never requested from TMDB at all. Order = preference: English and Arabic first
+// (as before), then the title's own language when it is one of these, then the rest, then textless.
+export const LOGO_IMAGE_LANGUAGES = 'en,ar,tr,es,de,fr,it,pt,nl,sv,da,no,fi,pl,cs,ro,hu,id,ms,null';
+const READABLE_LOGO_LANGS = LOGO_IMAGE_LANGUAGES.split(',').filter((l) => l !== 'null');
+
+export function pickLogo(logos, originalLanguage) {
+  if (!logos || logos.length === 0) return null;
+  const order = originalLanguage === 'ar' ? ['ar', 'en'] : ['en', 'ar'];
+  if (READABLE_LOGO_LANGS.includes(originalLanguage)) order.push(originalLanguage);
+  order.push(...READABLE_LOGO_LANGS);
+  for (const lang of order) {
+    const hit = logos.find((img) => img.iso_639_1 === lang);
+    if (hit) return hit.file_path;
+  }
+  const textless = logos.find((img) => img.iso_639_1 == null);
+  return textless ? textless.file_path : null;
+}
+
+// Posters keep the original en/ar/textless-only behavior even though the detail fetch now asks TMDB
+// for more image languages (needed for logos).
+export function enArOnly(images) {
+  return images?.filter((img) => img.iso_639_1 == null || img.iso_639_1 === 'en' || img.iso_639_1 === 'ar');
 }
 
 function slugify(value) {
@@ -522,7 +587,7 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
     // Without this, TMDB's `images` only ever comes back in one language (whatever the
     // request's own `language` was, plus textless) - both en and ar variants are needed for
     // pickImageByLang below to actually have something to choose between.
-    include_image_language: 'en,ar,null',
+    include_image_language: LOGO_IMAGE_LANGUAGES,
   });
 
   let collectionId = null;
@@ -567,12 +632,11 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
     if (id) languageIds.push(id);
   }
 
-  // Arabic-language films get their Arabic poster/logo, foreign films get English - backdrops
-  // are left as TMDB's own default pick (data.images.backdrops[0]) since a backdrop is a plain
-  // photo, not something that carries text/language the way a poster or logo does.
-  const posterPath = pickImageByLang(data.images?.posters, data.original_language) ?? data.poster_path;
-  const backdropPath = data.images?.backdrops?.[0]?.file_path ?? data.backdrop_path;
-  const logoPath = pickImageByLang(data.images?.logos, data.original_language);
+  // Arabic-language films get their Arabic poster/logo, foreign films get English. Backdrops are
+  // picked separately (see pickBackdrop): textless + high-res + best-voted, not language-based.
+  const posterPath = pickImageByLang(enArOnly(data.images?.posters), data.original_language) ?? data.poster_path;
+  const backdropPath = pickBackdrop(data.images?.backdrops, data.backdrop_path);
+  const logoPath = pickLogo(data.images?.logos, data.original_language);
 
   const movieArabic = extractArabicTranslation(data.translations, false);
   const movieOverviewAr = movieArabic.overview || (data.overview ? await translateToArabic(data.overview) : null);
@@ -606,7 +670,7 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
   const movie = await prisma.movie.upsert({
     where: { tmdbId: String(data.id) },
     create: { tmdbId: String(data.id), ...fields },
-    update: fields,
+    update: await keepExistingArtwork(prisma.movie, String(data.id), fields),
   });
 
   await prisma.movieGenre.createMany({
@@ -639,12 +703,11 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
     skipDuplicates: true,
   });
 
-  await prisma.image.deleteMany({ where: { movieId: movie.id, provider: 'tmdb' } });
   const imageRows = [];
   if (posterPath) imageRows.push({ movieId: movie.id, type: 'POSTER', url: imageUrl(imgBase, 'w500', posterPath), provider: 'tmdb' });
   if (backdropPath) imageRows.push({ movieId: movie.id, type: 'BACKDROP', url: imageUrl(imgBase, 'w1280', backdropPath), provider: 'tmdb' });
   if (logoPath) imageRows.push({ movieId: movie.id, type: 'LOGO', url: imageUrl(imgBase, 'w500', logoPath), provider: 'tmdb' });
-  if (imageRows.length) await prisma.image.createMany({ data: imageRows });
+  await addMissingImages({ movieId: movie.id }, imageRows);
 
   // No demo/placeholder stream rows attached here - a freshly-imported movie intentionally has
   // none until a real one is entered through the admin panel (see the comment on
@@ -656,8 +719,11 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
     update: { sourceTitle: data.title },
   });
 
+  // Off by default (per explicit request) - imports no longer auto-attach OpenSubtitles tracks
+  // (the sources' own subtitles are used instead). Set ATTACH_OPENSUBTITLES=1 to re-enable; the
+  // standalone backfill-movie-subtitles.mjs script still calls ensureSubtitle directly.
   // Arabic-language movies don't need an Arabic subtitle - the audio itself already is Arabic.
-  if (data.original_language !== 'ar') {
+  if (process.env.ATTACH_OPENSUBTITLES === '1' && data.original_language !== 'ar') {
     await ensureSubtitle(movie.id, data.title, data.release_date ? new Date(data.release_date).getUTCFullYear() : null, fields.imdbId);
   }
 
@@ -668,7 +734,7 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
   const data = await tmdbGet(`/tv/${tmdbId}`, {
     append_to_response: 'credits,external_ids,images,translations,content_ratings',
     language: 'en-US',
-    include_image_language: 'en,ar,null',
+    include_image_language: LOGO_IMAGE_LANGUAGES,
   });
 
   const genreIds = [];
@@ -697,9 +763,9 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
     if (id) languageIds.push(id);
   }
 
-  const posterPath = pickImageByLang(data.images?.posters, data.original_language) ?? data.poster_path;
-  const backdropPath = data.images?.backdrops?.[0]?.file_path ?? data.backdrop_path;
-  const logoPath = pickImageByLang(data.images?.logos, data.original_language);
+  const posterPath = pickImageByLang(enArOnly(data.images?.posters), data.original_language) ?? data.poster_path;
+  const backdropPath = pickBackdrop(data.images?.backdrops, data.backdrop_path);
+  const logoPath = pickLogo(data.images?.logos, data.original_language);
 
   const showArabic = extractArabicTranslation(data.translations, true);
   const showOverviewAr = showArabic.overview || (data.overview ? await translateToArabic(data.overview) : null);
@@ -727,10 +793,18 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
     popularity: data.popularity ?? null,
   };
 
+  // A hand-arranged season layout (see TVShow.seasonLayoutCustom) is left exactly as the admin set it.
+  const existingShow = await prisma.tVShow.findUnique({ where: { tmdbId: String(data.id) }, select: { seasonLayoutCustom: true } });
+  const layoutIsCustom = !!existingShow?.seasonLayoutCustom;
+  if (layoutIsCustom) {
+    delete fields.numberOfSeasons;
+    delete fields.numberOfEpisodes;
+  }
+
   const show = await prisma.tVShow.upsert({
     where: { tmdbId: String(data.id) },
     create: { tmdbId: String(data.id), ...fields },
-    update: fields,
+    update: await keepExistingArtwork(prisma.tVShow, String(data.id), fields),
   });
 
   await prisma.tVShowGenre.createMany({
@@ -763,12 +837,11 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
     skipDuplicates: true,
   });
 
-  await prisma.image.deleteMany({ where: { showId: show.id, provider: 'tmdb' } });
   const imageRows = [];
   if (posterPath) imageRows.push({ showId: show.id, type: 'POSTER', url: imageUrl(imgBase, 'w500', posterPath), provider: 'tmdb' });
   if (backdropPath) imageRows.push({ showId: show.id, type: 'BACKDROP', url: imageUrl(imgBase, 'w1280', backdropPath), provider: 'tmdb' });
   if (logoPath) imageRows.push({ showId: show.id, type: 'LOGO', url: imageUrl(imgBase, 'w500', logoPath), provider: 'tmdb' });
-  if (imageRows.length) await prisma.image.createMany({ data: imageRows });
+  await addMissingImages({ showId: show.id }, imageRows);
 
   await prisma.tVShowProvider.upsert({
     where: { showId_providerId: { showId: show.id, providerId } },
@@ -776,7 +849,7 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
     update: { sourceTitle: data.name },
   });
 
-  const seasons = (data.seasons ?? []).filter((s) => s.season_number >= 1).slice(0, MAX_SEASONS_PER_SHOW);
+  const seasons = layoutIsCustom ? [] : (data.seasons ?? []).filter((s) => s.season_number >= 1).slice(0, MAX_SEASONS_PER_SHOW);
   let episodesSoFar = 0;
   for (const s of seasons) {
     if (episodesSoFar >= MAX_EPISODES_PER_SHOW) break;

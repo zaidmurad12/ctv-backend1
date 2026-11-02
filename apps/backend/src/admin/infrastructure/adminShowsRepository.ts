@@ -1,3 +1,5 @@
+import { adminListOrderBy, isDefaultNewestSort, releasedFirstPage } from './adminListSort.js';
+import { parseSourceLinks } from '../../common/sourceLinks.js';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PrismaDatabaseClient } from '@ctv-platform/infrastructure';
 import { PrismaService } from '../../prisma/prismaService.js';
@@ -8,7 +10,6 @@ import type {
   CreateSubtitleDto,
   UpdateShowDto,
 } from '../dto.js';
-import { AudioSyncAnalysisService } from './audioSyncAnalysisService.js';
 import { MovieHashService } from './movieHashService.js';
 import type { SubtitleCandidate } from './openSubtitlesService.js';
 import { OpenSubtitlesService } from './openSubtitlesService.js';
@@ -63,24 +64,8 @@ export class AdminShowsRepository {
     private readonly tmdbImport: TmdbImportService,
     private readonly openSubtitles: OpenSubtitlesService,
     private readonly movieHash: MovieHashService,
-    private readonly audioSyncAnalysis: AudioSyncAnalysisService,
   ) {
     this.prisma = prismaService.client;
-  }
-
-  /** Same automatic sync analysis as AdminMoviesRepository's own, for one episode. */
-  private async triggerSyncAnalysis(
-    episodeId: string,
-    subtitleId: string,
-    content: string,
-  ): Promise<void> {
-    const stream = await this.prisma.stream.findFirst({
-      where: { isActive: true, episodeProvider: { episodeId } },
-      orderBy: { isDefault: 'desc' },
-      select: { streamUrl: true },
-    });
-    if (!stream) return;
-    this.audioSyncAnalysis.analyzeInBackground(subtitleId, stream.streamUrl, content);
   }
 
   async list(params: {
@@ -91,7 +76,12 @@ export class AdminShowsRepository {
     language?: string;
     missingStream?: boolean;
     missingSubtitle?: boolean;
+    hasAnyStream?: boolean;
+    sort?: string;
+    hasSourceMatch?: boolean;
     status?: string;
+    missingArabicTitle?: boolean;
+    missingArtwork?: boolean;
   }): Promise<{ items: AdminShowSummaryDto[]; total: number }> {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
@@ -150,29 +140,64 @@ export class AdminShowsRepository {
         andConditions.push({ NOT: hasEpisodeMissingSubtitle });
       }
     }
+    // The positive counterpart missingStream doesn't cover - see AdminListShowsQueryDto's own
+    // comment. "Any episode, any season" rather than missingStream's per-episode negation, so a
+    // show with even one working episode out of forty still counts as "has a source".
+    if (params.hasSourceMatch !== undefined) {
+      where.hasSourceMatch = params.hasSourceMatch;
+    }
+    if (params.hasAnyStream !== undefined) {
+      const hasAnyActiveStream = {
+        seasons: {
+          some: {
+            episodes: {
+              some: { providers: { some: { streams: { some: { isActive: true } } } } },
+            },
+          },
+        },
+      };
+      andConditions.push(params.hasAnyStream ? hasAnyActiveStream : { NOT: hasAnyActiveStream });
+    }
+    // See AdminMoviesRepository.list's identical pair for the full reasoning - same two filters,
+    // same fields, same semantics, just on TVShow instead of Movie.
+    const missingArabicTitle = { OR: [{ titleAr: null }, { titleAr: '' }] };
+    if (params.missingArabicTitle !== undefined) {
+      andConditions.push(params.missingArabicTitle ? missingArabicTitle : { NOT: missingArabicTitle });
+    }
+    const hasLogo = { images: { some: { type: 'LOGO' } } };
+    const hasBackdrop = { images: { some: { type: 'BACKDROP' } } };
+    if (params.missingArtwork !== undefined) {
+      andConditions.push(
+        params.missingArtwork ? { OR: [{ NOT: hasLogo }, { NOT: hasBackdrop }] } : { AND: [hasLogo, hasBackdrop] },
+      );
+    }
     if (andConditions.length) where.AND = andConditions;
 
-    const [rows, total] = await Promise.all([
-      this.prisma.tVShow.findMany({
-        where,
-        include: {
+    const include = {
           images: true,
           seasons: {
             include: {
               episodes: { include: { providers: { include: { streams: true, subtitles: true } } } },
             },
           },
-        },
+        };
+    const [rows, total] = await Promise.all([
+      isDefaultNewestSort(params.sort)
+        ? releasedFirstPage(this.prisma.tVShow as never, where, include, page, limit)
+        : this.prisma.tVShow.findMany({
+        where,
+        include,
         skip: (page - 1) * limit,
         take: limit,
         // Same fix as AdminMoviesRepository.list - "newest" means newest release, not newest
         // added to the catalog.
-        orderBy: { releaseDate: 'desc' },
+        orderBy: adminListOrderBy(params.sort),
       }),
       this.prisma.tVShow.count({ where }),
     ]);
 
-    return { items: rows.map((row) => this.toSummary(row)), total };
+    // Rows from releasedFirstPage come back untyped (it serves both models); same shape as findMany's.
+    return { items: rows.map((row) => this.toSummary(row as never)), total };
   }
 
   /** Distinct genre names / original languages across every non-deleted show, for the admin list's filter dropdowns. */
@@ -245,6 +270,13 @@ export class AdminShowsRepository {
     return this.tmdbImport.importShow(show.tmdbId);
   }
 
+  async refreshEpisodeImages(id: string) {
+    const show = await this.prisma.tVShow.findFirst({ where: { id, deletedAt: null }, select: { tmdbId: true } });
+    if (!show) throw new NotFoundException(`Show "${id}" not found.`);
+    if (!show.tmdbId) throw new NotFoundException(`Show "${id}" has no TMDB id to fetch images from.`);
+    return this.tmdbImport.refreshEpisodeImages(id);
+  }
+
   async delete(id: string): Promise<void> {
     const show = await this.prisma.tVShow.findFirst({
       where: { id, deletedAt: null },
@@ -275,6 +307,7 @@ export class AdminShowsRepository {
     return {
       ...this.toSummary(row),
       overview: row.overview,
+      sourceLinks: parseSourceLinks(row.sourceLinks),
       seasons: row.seasons.map((season) => ({
         id: season.id,
         seasonNumber: season.seasonNumber,
@@ -285,6 +318,84 @@ export class AdminShowsRepository {
         ),
       })),
     };
+  }
+
+  // Re-splits this show's existing episodes (kept in their current season/episode order) into a
+  // new season layout, e.g. [9, 6, 8, 8, 10] - the admin tool for matching a show to however the
+  // playback sources happen to divide it (Money Heist: 3 TMDB seasons vs 5 source seasons).
+  // Every existing Episode row is only moved (seasonId + episodeNumber), never recreated, so its
+  // streams/subtitles/watch history stay attached. A layout longer than the episodes we have gets
+  // placeholder episodes appended at the end (no metadata, no stream yet); a shorter one needs
+  // allowDelete, since the trailing episodes (and their streams) are then removed. Season 0
+  // (specials) is left alone. Sets seasonLayoutCustom so a TMDB reimport doesn't undo it.
+  async restructureSeasons(id: string, layout: number[], allowDelete: boolean): Promise<void> {
+    const show = await this.prisma.tVShow.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        seasons: {
+          where: { seasonNumber: { gte: 1 } },
+          orderBy: { seasonNumber: 'asc' },
+          include: { episodes: { orderBy: { episodeNumber: 'asc' } } },
+        },
+      },
+    });
+    if (!show) throw new NotFoundException(`Show "${id}" not found.`);
+    if (layout.length === 0) throw new BadRequestException('Layout needs at least one season.');
+
+    const existing = show.seasons.flatMap((season) => season.episodes);
+    const total = layout.reduce((sum, count) => sum + count, 0);
+    if (existing.length > total && !allowDelete) {
+      throw new BadRequestException(
+        `The new layout covers ${total} episodes but this show has ${existing.length} - ` +
+          'raise the counts, or allow deleting the extra trailing episodes.',
+      );
+    }
+
+    // New seasons are staged at a high number first, then renumbered once the old ones are gone -
+    // @@unique([showId, seasonNumber]) would otherwise collide (old 1-3 vs new 1-5) mid-way.
+    const TEMP_OFFSET = 1000;
+    await this.prisma.$transaction(
+      async (tx) => {
+        const leftovers = existing.slice(total);
+        if (leftovers.length > 0) {
+          await tx.episode.deleteMany({ where: { id: { in: leftovers.map((e) => e.id) } } });
+        }
+
+        let cursor = 0;
+        const created: Array<{ seasonId: string; number: number }> = [];
+        for (let index = 0; index < layout.length; index++) {
+          const count = layout[index]!;
+          const season = await tx.season.create({
+            data: { showId: id, seasonNumber: TEMP_OFFSET + index + 1, episodeCount: count },
+          });
+          let firstAirDate: Date | null = null;
+          for (let n = 1; n <= count; n++) {
+            const current = existing[cursor];
+            cursor += 1;
+            if (current) {
+              await tx.episode.update({ where: { id: current.id }, data: { seasonId: season.id, episodeNumber: n } });
+              if (!firstAirDate && current.airDate) firstAirDate = current.airDate;
+            } else {
+              await tx.episode.create({
+                data: { seasonId: season.id, episodeNumber: n, title: `Episode ${n}`, titleAr: `الحلقة ${n}` },
+              });
+            }
+          }
+          if (firstAirDate) await tx.season.update({ where: { id: season.id }, data: { airDate: firstAirDate } });
+          created.push({ seasonId: season.id, number: index + 1 });
+        }
+
+        await tx.season.deleteMany({ where: { id: { in: show.seasons.map((s) => s.id) } } });
+        for (const season of created) {
+          await tx.season.update({ where: { id: season.seasonId }, data: { seasonNumber: season.number } });
+        }
+        await tx.tVShow.update({
+          where: { id },
+          data: { numberOfSeasons: layout.length, numberOfEpisodes: total, seasonLayoutCustom: true },
+        });
+      },
+      { timeout: 120_000, maxWait: 15_000 },
+    );
   }
 
   async update(id: string, dto: UpdateShowDto): Promise<void> {
@@ -298,6 +409,8 @@ export class AdminShowsRepository {
     // comes from the Image table, same as Movie - see adminMoviesRepository.update's own comment)
     // so a manual edit here has to replace the Image row of that type, not just set the column.
     const { poster, backdrop, logo, ...rest } = dto;
+    // Stored as plain JSON (class-validator hands over class instances).
+    if (rest.sourceLinks) rest.sourceLinks = rest.sourceLinks.map((l) => ({ source: l.source, nb: l.nb, kind: l.kind }));
     if (Object.keys(rest).length > 0) {
       await this.prisma.tVShow.update({
         where: { id },
@@ -406,7 +519,6 @@ export class AdminShowsRepository {
           where: { id: created.id },
           data: { resolvedUrl: link, resolvedContent: content },
         });
-        void this.triggerSyncAnalysis(episodeId, created.id, content);
         return;
       }
     }
@@ -436,7 +548,6 @@ export class AdminShowsRepository {
       where: { id: created.id },
       data: { url: `${PUBLIC_API_BASE_URL}/subtitles/${created.id}/resolve` },
     });
-    void this.triggerSyncAnalysis(episodeId, created.id, content);
   }
 
   private async findEpisodeWithShow(episodeId: string) {
@@ -523,6 +634,7 @@ export class AdminShowsRepository {
     releaseDate: Date | null;
     numberOfSeasons: number;
     numberOfEpisodes: number;
+    hasSourceMatch: boolean | null;
     featuredOrder: number | null;
     images: Array<{ type: string; url: string }>;
     seasons: Array<{
@@ -537,21 +649,29 @@ export class AdminShowsRepository {
       const subtitles = episode.providers.flatMap((p) => p.subtitles);
       return !streams.some((s) => s.isActive) || subtitles.length === 0;
     });
+    // Separate from hasIncompleteEpisodes above (true for nearly every show) - this is the
+    // movies-style "has at least one active stream anywhere at all" signal, for the admin list's
+    // hasAnyStream filter/badge.
+    const hasAnyPlayableStream = episodes.some((episode) =>
+      episode.providers.some((p) => p.streams.some((s) => s.isActive)),
+    );
     return {
       id: row.id,
       title: row.title,
       titleAr: row.titleAr,
       status: row.status,
       originalLanguage: row.originalLanguage,
-      poster: row.images.find((img) => img.type === 'POSTER')?.url ?? null,
-      backdrop: row.images.find((img) => img.type === 'BACKDROP')?.url ?? null,
-      logo: row.images.find((img) => img.type === 'LOGO')?.url ?? null,
+      poster: [...row.images].reverse().find((img) => img.type === 'POSTER')?.url ?? null,
+      backdrop: [...row.images].reverse().find((img) => img.type === 'BACKDROP')?.url ?? null,
+      logo: [...row.images].reverse().find((img) => img.type === 'LOGO')?.url ?? null,
       rating: row.rating === null ? null : Number(row.rating),
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
       numberOfSeasons: row.numberOfSeasons,
       numberOfEpisodes: row.numberOfEpisodes,
+      hasSourceMatch: row.hasSourceMatch,
       featuredOrder: row.featuredOrder,
       hasIncompleteEpisodes,
+      hasAnyPlayableStream,
     };
   }
 }

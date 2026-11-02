@@ -14,6 +14,14 @@ const REPO_ROOT = process.env.REPO_ROOT || process.cwd();
 // process (see prisma/import-one.mjs) rather than re-implementing cast/crew/genre/company/
 // country/language/artwork mapping a second time in TypeScript - that logic is intricate and
 // already proven; a second hand-written copy here would only drift from it over time.
+export interface EpisodeImagesRefreshResult {
+  updated: number;
+  unchanged: number;
+  missing: number;
+  seasons: number;
+  mode?: string;
+}
+
 @Injectable()
 export class TmdbImportService {
   async importMovie(tmdbId: string): Promise<string> {
@@ -22,6 +30,23 @@ export class TmdbImportService {
 
   async importShow(tmdbId: string): Promise<string> {
     return this.run('show', tmdbId);
+  }
+
+  /** Re-fetches only a show's episode images (see prisma/refresh-episode-images.mjs). */
+  async refreshEpisodeImages(showId: string): Promise<EpisodeImagesRefreshResult> {
+    try {
+      const { stdout } = await execFileAsync('node', ['prisma/refresh-episode-images.mjs', `--showId=${showId}`], {
+        cwd: REPO_ROOT,
+        timeout: 240_000,
+        env: process.env,
+      });
+      const lastLine = stdout.trim().split('\n').filter(Boolean).pop() ?? '';
+      return JSON.parse(lastLine) as EpisodeImagesRefreshResult;
+    } catch (err) {
+      throw new InternalServerErrorException(
+        `Episode image refresh failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async run(type: 'movie' | 'show', tmdbId: string): Promise<string> {

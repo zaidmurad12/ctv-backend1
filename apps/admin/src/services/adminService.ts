@@ -1,6 +1,13 @@
 import { apiRequest, apiRequestWithMeta } from '../lib/apiClient';
 import type {
   AdminFeaturedItemDto,
+  HomeSectionDto,
+  HomeSectionImportSpec,
+  HomeSectionItemDto,
+  HomeSectionKind,
+  HomeSectionListPreview,
+  RulePreviewItem,
+  HomeSectionRule,
   ArchiveDiscoverCandidateDto,
   ArchiveImportResultDto,
   AdminMovieDetailDto,
@@ -22,7 +29,6 @@ import type {
   ProviderHealthSummaryDto,
   ProviderSummaryDto,
   SubtitleCandidateDto,
-  SyncIssueDto,
   UpdateMoviePatch,
   UpdateShowPatch,
   UpdateStreamPatch,
@@ -33,6 +39,22 @@ import type {
 export interface PagedResult<T> {
   readonly items: T[];
   readonly meta: PaginationMeta;
+}
+
+export interface TvSyncLog {
+  stats: { matched24h: number; imported24h: number; unmatched24h: number; total: number };
+  items: Array<{
+    nb: string;
+    kind: 'movie' | 'show';
+    enTitle: string | null;
+    arTitle: string | null;
+    year: number | null;
+    imdbId: string | null;
+    status: string;
+    method: string | null;
+    at: string;
+    target: { id: string; title: string; titleAr: string | null; status: string } | null;
+  }>;
 }
 
 export const adminService = {
@@ -207,6 +229,83 @@ export const adminService = {
     return apiRequest<{ id: string }>(`admin/shows/${id}/reimport`, { method: 'POST' });
   },
 
+  sourceCheckCandidates(
+    scope: 'unchecked' | 'unmatched' | 'all',
+    type: 'movie' | 'show',
+    offset: number,
+    limit: number,
+  ): Promise<{ total: number; items: import('../lib/sourceMatch').CheckTitle[] }> {
+    return apiRequest('admin/source-check/candidates', { params: { scope, type, offset, limit } });
+  },
+
+  sourceCheckTvLog(limit = 200): Promise<TvSyncLog> {
+    return apiRequest('admin/source-check/tv-log', { params: { limit } });
+  },
+
+  saveSourceCheckResults(
+    results: Array<{ type: 'movie' | 'show'; id: string; match: boolean }>,
+  ): Promise<{ matched: number; unmatched: number; published?: number }> {
+    return apiRequest('admin/source-check/results', { method: 'POST', body: { results } });
+  },
+
+  refreshShowEpisodeImages(
+    id: string,
+  ): Promise<{ updated: number; unchanged: number; missing: number; seasons: number; mode?: string }> {
+    return apiRequest(`admin/shows/${id}/refresh-episode-images`, { method: 'POST' });
+  },
+
+  homeSections(): Promise<HomeSectionDto[]> {
+    return apiRequest<HomeSectionDto[]>('admin/home-sections');
+  },
+
+  homeSectionPresets(): Promise<Array<{ key: string; labelEn: string; media: string }>> {
+    return apiRequest('admin/home-sections/presets');
+  },
+
+  previewTmdbList(listId: string): Promise<HomeSectionListPreview> {
+    return apiRequest<HomeSectionListPreview>('admin/home-sections/tmdb-list', { params: { listId } });
+  },
+
+  previewHomeRule(rule: HomeSectionRule, limit = 20): Promise<RulePreviewItem[]> {
+    return apiRequest<RulePreviewItem[]>('admin/home-sections/rule-preview', { method: 'POST', body: { rule, limit } });
+  },
+
+  createHomeSection(body: { kind: HomeSectionKind; titleAr: string; titleEn: string; maxItems?: number; rule?: HomeSectionRule }): Promise<HomeSectionDto> {
+    return apiRequest<HomeSectionDto>('admin/home-sections', { method: 'POST', body });
+  },
+
+  updateHomeSection(id: string, body: { titleAr?: string; titleEn?: string; isVisible?: boolean; maxItems?: number }): Promise<void> {
+    return apiRequest<void>(`admin/home-sections/${id}`, { method: 'PATCH', body });
+  },
+
+  reorderHomeSections(ids: string[]): Promise<void> {
+    return apiRequest<void>('admin/home-sections/order', { method: 'PUT', body: { ids } });
+  },
+
+  deleteHomeSection(id: string): Promise<void> {
+    return apiRequest<void>(`admin/home-sections/${id}`, { method: 'DELETE' });
+  },
+
+  homeSectionItems(id: string): Promise<HomeSectionItemDto[]> {
+    return apiRequest<HomeSectionItemDto[]>(`admin/home-sections/${id}/items`);
+  },
+
+  addHomeSectionItem(id: string, body: { movieId?: string; showId?: string }): Promise<void> {
+    return apiRequest<void>(`admin/home-sections/${id}/items`, { method: 'POST', body });
+  },
+
+  removeHomeSectionItem(id: string, itemId: string): Promise<void> {
+    return apiRequest<void>(`admin/home-sections/${id}/items/${itemId}`, { method: 'DELETE' });
+  },
+
+  importHomeSection(id: string, body: HomeSectionImportSpec): Promise<void> {
+    return apiRequest<void>(`admin/home-sections/${id}/import`, { method: 'POST', body });
+  },
+
+  restructureShowSeasons(id: string, layout: number[], allowDelete: boolean): Promise<void> {
+    return apiRequest<void>(`admin/shows/${id}/restructure-seasons`, { method: 'POST', body: { layout, allowDelete } });
+  },
+
   deleteShow(id: string): Promise<void> {
     return apiRequest<void>(`admin/shows/${id}`, { method: 'DELETE' });
   },
@@ -268,17 +367,6 @@ export const adminService = {
     return apiRequest<void>(`admin/episodes/${episodeId}/subtitles/upload`, {
       method: 'POST',
       body: { language, format, content },
-    });
-  },
-
-  listSyncIssues(resolved: boolean): Promise<SyncIssueDto[]> {
-    return apiRequest<SyncIssueDto[]>('admin/sync-issues', { params: { resolved } });
-  },
-
-  resolveSyncIssue(id: string, resolved: boolean): Promise<void> {
-    return apiRequest<void>(`admin/sync-issues/${id}/resolve`, {
-      method: 'POST',
-      params: { resolved },
     });
   },
 

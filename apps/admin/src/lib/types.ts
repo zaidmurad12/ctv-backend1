@@ -92,6 +92,7 @@ export interface AdminMovieSummaryDto {
   readonly releaseDate?: string | null;
   readonly hasPlayableStream: boolean;
   readonly hasSubtitles: boolean;
+  readonly hasSourceMatch?: boolean | null;
 }
 
 export interface AdminMovieFilterOptions {
@@ -105,9 +106,13 @@ export interface AdminMovieListParams {
   search?: string;
   genre?: string;
   language?: string;
+  sort?: string;
   hasStream?: boolean;
   hasSubtitle?: boolean;
+  hasSourceMatch?: boolean;
   status?: string;
+  missingArabicTitle?: boolean;
+  missingArtwork?: boolean;
 }
 
 export interface AdminStreamDto {
@@ -132,12 +137,21 @@ export interface AdminSubtitleDto {
 }
 
 export interface AdminMovieDetailDto extends AdminMovieSummaryDto {
+  readonly sourceLinks?: AdminSourceLink[];
   readonly overview?: string | null;
   readonly streams: AdminStreamDto[];
   readonly subtitles: AdminSubtitleDto[];
 }
 
+export interface AdminSourceLink {
+  source: 'cee' | 'cinemana';
+  nb: string;
+  kind: 'movie' | 'series';
+}
+
 export interface UpdateMoviePatch {
+  sourceLinks?: AdminSourceLink[];
+  hasSourceMatch?: boolean | null;
   title?: string;
   titleAr?: string;
   overview?: string;
@@ -191,20 +205,6 @@ export interface ArchiveImportResultDto {
   readonly error?: string;
 }
 
-export interface SyncIssueDto {
-  readonly id: string;
-  readonly movieId?: string | null;
-  readonly episodeId?: string | null;
-  readonly showId?: string | null;
-  readonly title: string;
-  readonly offsetMs: number;
-  readonly speed: number;
-  readonly reportCount: number;
-  readonly firstReportedAt: string;
-  readonly lastReportedAt: string;
-  readonly resolved: boolean;
-}
-
 export interface CreateSubtitlePatch {
   language: string;
   format?: string;
@@ -225,6 +225,7 @@ export interface UpdateSubtitlePatch {
 // never has playable streams - only its episodes do). ------------------------------------------
 
 export interface AdminShowSummaryDto {
+  readonly hasSourceMatch?: boolean | null;
   readonly id: string;
   readonly title: string;
   readonly titleAr?: string | null;
@@ -238,6 +239,7 @@ export interface AdminShowSummaryDto {
   readonly numberOfSeasons: number;
   readonly numberOfEpisodes: number;
   readonly hasIncompleteEpisodes: boolean;
+  readonly hasAnyPlayableStream: boolean;
 }
 
 export interface AdminShowFilterOptions {
@@ -251,9 +253,14 @@ export interface AdminShowListParams {
   search?: string;
   genre?: string;
   language?: string;
+  sort?: string;
   missingStream?: boolean;
   missingSubtitle?: boolean;
+  hasAnyStream?: boolean;
+  hasSourceMatch?: boolean;
   status?: string;
+  missingArabicTitle?: boolean;
+  missingArtwork?: boolean;
 }
 
 export interface AdminEpisodeSummaryDto {
@@ -278,6 +285,7 @@ export interface AdminSeasonSummaryDto {
 }
 
 export interface AdminShowDetailDto extends AdminShowSummaryDto {
+  readonly sourceLinks?: AdminSourceLink[];
   readonly overview?: string | null;
   readonly seasons: AdminSeasonSummaryDto[];
 }
@@ -293,6 +301,8 @@ export interface FeaturedItemInput {
 }
 
 export interface UpdateShowPatch {
+  sourceLinks?: AdminSourceLink[];
+  hasSourceMatch?: boolean | null;
   title?: string;
   titleAr?: string;
   overview?: string;
@@ -331,4 +341,82 @@ export interface DiscoverImportResultDto {
   readonly success: boolean;
   readonly id?: string;
   readonly error?: string;
+}
+
+export type HomeSectionKind = 'RECENT' | 'POPULAR' | 'TOP_RATED' | 'SERIES' | 'CUSTOM' | 'RULE';
+
+export interface HomeSectionRule {
+  media: 'movie' | 'series' | 'all';
+  sort: 'newest' | 'rating' | 'popularity';
+  language?: string;
+  genre?: string;
+  minVotes?: number;
+  minRating?: number;
+}
+
+export interface RulePreviewItem {
+  id: string;
+  type: 'movie' | 'show';
+  title: string;
+  year: number | null;
+  rating: number | null;
+}
+
+export interface HomeSectionDto {
+  id: string;
+  kind: HomeSectionKind;
+  titleAr: string;
+  titleEn: string;
+  sortOrder: number;
+  isVisible: boolean;
+  maxItems: number;
+  rule?: HomeSectionRule | null;
+  importSource: string | null;
+  importStatus: 'IMPORTING' | 'DONE' | 'FAILED' | null;
+  importTotal: number;
+  importDone: number;
+  importError: string | null;
+  itemCount: number;
+}
+
+export interface HomeSectionItemDto {
+  itemId: string;
+  type: 'movie' | 'show';
+  id: string;
+  title: string;
+  year: number | null;
+  rating: number | null;
+  status: string | null;
+}
+
+export interface HomeSectionImportSpec {
+  source: 'preset' | 'list' | 'discover' | 'imdb';
+  imdbIds?: string[];
+  preset?: string;
+  listId?: string;
+  kind?: 'movie' | 'tv';
+  year?: number;
+  language?: string;
+  genres?: string;
+  keywords?: string;
+  minVotes?: number;
+  minRating?: number;
+  sortBy?: string;
+  limit: number;
+  importMissing?: boolean;
+}
+
+export interface HomeSectionListPreview {
+  listId: string;
+  name: string | null;
+  description: string | null;
+  total: number;
+  items: Array<{
+    tmdbId: string;
+    mediaType: 'movie' | 'tv';
+    title: string;
+    year: number | null;
+    poster: string | null;
+    inCatalog: boolean;
+  }>;
 }

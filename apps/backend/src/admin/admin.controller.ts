@@ -30,6 +30,7 @@ import {
   UpdateMovieDto,
   UpdateProviderPriorityDto,
   UpdateShowDto,
+  RestructureSeasonsDto,
   UpdateStreamDto,
   UpdateSubtitleDto,
   UpdateUserRoleDto,
@@ -49,14 +50,13 @@ import type {
   ProviderHealthSummaryDto,
   ProviderSummaryDto,
   SubtitleCandidateDto,
-  SyncIssueDto,
 } from './dto.js';
+import { CinemanaBackfillService, type BackfillScope } from './infrastructure/cinemanaBackfillService.js';
 import {
   AdminDiscoverUseCases,
   AdminFeaturedUseCases,
   AdminMoviesUseCases,
   AdminShowsUseCases,
-  AdminSyncIssuesUseCases,
   AdminUsersUseCases,
   DashboardUseCases,
   ProvidersUseCases,
@@ -74,9 +74,9 @@ export class AdminController {
     private readonly showsUseCases: AdminShowsUseCases,
     private readonly featuredUseCases: AdminFeaturedUseCases,
     private readonly discoverUseCases: AdminDiscoverUseCases,
-    private readonly syncIssuesUseCases: AdminSyncIssuesUseCases,
     private readonly dashboardUseCases: DashboardUseCases,
     private readonly providersUseCases: ProvidersUseCases,
+    private readonly cinemanaBackfill: CinemanaBackfillService,
   ) {}
 
   @Get('users')
@@ -101,6 +101,13 @@ export class AdminController {
   @ApiOperation({ summary: 'List registered providers' })
   providers(): Promise<ProviderSummaryDto[]> {
     return this.providersUseCases.list();
+  }
+
+  @Post('sync/cinemana')
+  @ApiOperation({ summary: 'Backfill Cinemana subtitles and missing streams for published works' })
+  syncCinemana(@Query('limit') limit?: string, @Query('scope') scope?: BackfillScope, @Query('cursor') cursor?: string) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.cinemanaBackfill.run(parsedLimit && parsedLimit > 0 ? parsedLimit : undefined, scope === 'movies' ? 'movies' : 'all', cursor);
   }
 
   @Get('providers/health')
@@ -219,21 +226,6 @@ export class AdminController {
   })
   discoverImportArchive(@Body() dto: DiscoverImportArchiveDto): Promise<ArchiveImportResultDto[]> {
     return this.discoverUseCases.importArchive(dto.identifiers);
-  }
-
-  @Get('sync-issues')
-  @ApiOperation({
-    summary: 'List titles the app has reported a real subtitle sync mismatch for',
-  })
-  listSyncIssues(@Query('resolved') resolved?: string): Promise<SyncIssueDto[]> {
-    return this.syncIssuesUseCases.list(resolved === 'true');
-  }
-
-  @Post('sync-issues/:id/resolve')
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Mark a sync issue resolved (or reopen it)' })
-  resolveSyncIssue(@Param('id') id: string, @Query('resolved') resolved?: string): Promise<void> {
-    return this.syncIssuesUseCases.resolve(id, resolved !== 'false');
   }
 
   @Post('movies/import')
@@ -379,6 +371,14 @@ export class AdminController {
     return this.showsUseCases.reimport(id);
   }
 
+  @Post('shows/:id/refresh-episode-images')
+  @ApiOperation({ summary: "Re-fetch only a show's episode images from TMDB (nothing else is changed)" })
+  refreshEpisodeImages(
+    @Param('id') id: string,
+  ): Promise<{ updated: number; unchanged: number; missing: number; seasons: number; mode?: string }> {
+    return this.showsUseCases.refreshEpisodeImages(id);
+  }
+
   @Delete('shows/:id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove a TV show (soft delete)' })
@@ -399,6 +399,15 @@ export class AdminController {
   @ApiOperation({ summary: "Edit a show's title/overview/status" })
   updateShow(@Param('id') id: string, @Body() dto: UpdateShowDto): Promise<void> {
     return this.showsUseCases.update(id, dto);
+  }
+
+  @Post('shows/:id/restructure-seasons')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: "Re-split a show's existing episodes into a new season layout (keeps every episode's streams/history)",
+  })
+  restructureShowSeasons(@Param('id') id: string, @Body() dto: RestructureSeasonsDto): Promise<void> {
+    return this.showsUseCases.restructureSeasons(id, dto);
   }
 
   @Post('episodes/:id/streams')

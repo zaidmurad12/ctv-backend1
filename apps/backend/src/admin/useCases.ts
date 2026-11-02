@@ -31,9 +31,9 @@ import type {
   ProviderHealthSummaryDto,
   ProviderSummaryDto,
   SubtitleCandidateDto,
-  SyncIssueDto,
   UpdateMovieDto,
   UpdateShowDto,
+  RestructureSeasonsDto,
   UpdateStreamDto,
   UpdateSubtitleDto,
   UpdateUserRoleDto,
@@ -45,7 +45,6 @@ import { AdminShowsRepository } from './infrastructure/adminShowsRepository.js';
 import { DashboardStatsRepository } from './infrastructure/dashboardStatsRepository.js';
 import { TmdbDiscoverService } from './infrastructure/tmdbDiscoverService.js';
 import { TmdbImportService } from './infrastructure/tmdbImportService.js';
-import { SyncIssueRepository } from '../catalog/infrastructure/syncIssueRepository.js';
 
 @Injectable()
 export class AdminUsersUseCases {
@@ -96,7 +95,11 @@ export class AdminMoviesUseCases {
       language: query.language,
       hasStream: query.hasStream,
       hasSubtitle: query.hasSubtitle,
+      hasSourceMatch: query.hasSourceMatch,
+      sort: query.sort,
       status: query.status,
+      missingArabicTitle: query.missingArabicTitle,
+      missingArtwork: query.missingArtwork,
     });
     return { items, meta: buildPaginationMeta(page, limit, total) };
   }
@@ -188,7 +191,12 @@ export class AdminShowsUseCases {
       language: query.language,
       missingStream: query.missingStream,
       missingSubtitle: query.missingSubtitle,
+      hasAnyStream: query.hasAnyStream,
+      sort: query.sort,
+      hasSourceMatch: query.hasSourceMatch,
       status: query.status,
+      missingArabicTitle: query.missingArabicTitle,
+      missingArtwork: query.missingArtwork,
     });
     return { items, meta: buildPaginationMeta(page, limit, total) };
   }
@@ -205,6 +213,10 @@ export class AdminShowsUseCases {
     return this.shows.reimport(id).then((newId) => ({ id: newId }));
   }
 
+  refreshEpisodeImages(id: string) {
+    return this.shows.refreshEpisodeImages(id);
+  }
+
   delete(id: string): Promise<void> {
     return this.shows.delete(id);
   }
@@ -217,6 +229,10 @@ export class AdminShowsUseCases {
 
   update(id: string, dto: UpdateShowDto): Promise<void> {
     return this.shows.update(id, dto);
+  }
+
+  restructureSeasons(id: string, dto: RestructureSeasonsDto): Promise<void> {
+    return this.shows.restructureSeasons(id, dto.layout, dto.allowDelete ?? false);
   }
 
   addEpisodeStream(episodeId: string, dto: CreateStreamDto): Promise<void> {
@@ -519,18 +535,5 @@ export class AdminDiscoverUseCases {
       }
     }
     return results;
-  }
-}
-
-@Injectable()
-export class AdminSyncIssuesUseCases {
-  constructor(private readonly syncIssues: SyncIssueRepository) {}
-
-  list(resolved: boolean): Promise<SyncIssueDto[]> {
-    return this.syncIssues.list(resolved);
-  }
-
-  resolve(id: string, resolved: boolean): Promise<void> {
-    return this.syncIssues.resolve(id, resolved);
   }
 }

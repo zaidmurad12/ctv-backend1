@@ -1,4 +1,5 @@
 import { Controller, Get, Param } from '@nestjs/common';
+import { PublicCache } from '../common/interceptors/publicCacheInterceptor.js';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/decorators.js';
 import type {
@@ -17,6 +18,7 @@ import { EpisodesUseCases, SeasonsUseCases } from './useCases.js';
 export class SeasonsController {
   constructor(private readonly seasonsUseCases: SeasonsUseCases) {}
 
+  @PublicCache()
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Season details, including its episodes' })
@@ -24,6 +26,7 @@ export class SeasonsController {
     return this.seasonsUseCases.getById(id);
   }
 
+  @PublicCache()
   @Public()
   @Get(':id/episodes')
   @ApiOperation({ summary: 'Episodes for a season' })
@@ -37,6 +40,7 @@ export class SeasonsController {
 export class EpisodesController {
   constructor(private readonly episodesUseCases: EpisodesUseCases) {}
 
+  @PublicCache()
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Episode details' })

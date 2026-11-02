@@ -39,8 +39,11 @@ export class CatalogRefreshService {
       const summaryLine = stdout.trim().split('\n').filter(Boolean).pop() ?? '(no output)';
       this.logger.log(`reimport-published-shows.mjs finished: ${summaryLine}`);
     } catch (err) {
+      // The script's own last lines say why (a timeout kill used to log only "Command failed").
+      const e = err as { killed?: boolean; signal?: string; stdout?: string; stderr?: string; message?: string };
+      const tail = `${e.stdout ?? ''}\n${e.stderr ?? ''}`.trim().split('\n').filter(Boolean).slice(-5).join(' | ');
       this.logger.error(
-        `reimport-published-shows.mjs failed: ${err instanceof Error ? err.message : String(err)}`,
+        `reimport-published-shows.mjs failed${e.killed ? ` (killed, ${e.signal ?? 'timeout'})` : ''}: ${tail || e.message || String(err)}`,
       );
     } finally {
       this.running = false;

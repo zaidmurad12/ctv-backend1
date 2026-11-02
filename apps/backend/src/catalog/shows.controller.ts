@@ -6,6 +6,7 @@ import { CatalogListQueryDto } from './dto.js';
 import type { EpisodeSummaryDto, SeasonSummaryDto, ShowDetailDto, ShowSummaryDto } from './dto.js';
 import { ShowsUseCases } from './useCases.js';
 import { type Page } from './useCases.js';
+import { PublicCache } from '../common/interceptors/publicCacheInterceptor.js';
 
 const MOVIES_THROTTLE = { default: { limit: 120, ttl: 60_000 } };
 
@@ -18,6 +19,7 @@ const MOVIES_THROTTLE = { default: { limit: 120, ttl: 60_000 } };
 export class ShowsController {
   constructor(private readonly showsUseCases: ShowsUseCases) {}
 
+  @PublicCache()
   @Public()
   @Get()
   @ApiOperation({ summary: 'List TV shows with search/sort/pagination' })
@@ -25,6 +27,7 @@ export class ShowsController {
     return this.showsUseCases.list(query);
   }
 
+  @PublicCache()
   @Public()
   @Get('latest')
   @ApiOperation({ summary: 'Newest published TV shows' })
@@ -32,6 +35,7 @@ export class ShowsController {
     return this.showsUseCases.listBySort('newest', 20);
   }
 
+  @PublicCache()
   @Public()
   @Get('popular')
   @ApiOperation({ summary: 'Most popular TV shows' })
@@ -39,6 +43,7 @@ export class ShowsController {
     return this.showsUseCases.listBySort('popularity', 20);
   }
 
+  @PublicCache()
   @Public()
   @Get('trending')
   @ApiOperation({ summary: 'Highest rated TV shows' })
@@ -46,6 +51,7 @@ export class ShowsController {
     return this.showsUseCases.listBySort('rating', 20);
   }
 
+  @PublicCache()
   @Public()
   @Get('top-rated')
   @ApiOperation({ summary: 'Highest rated TV shows with a meaningful vote count' })
@@ -53,6 +59,7 @@ export class ShowsController {
     return this.showsUseCases.topRated(20);
   }
 
+  @PublicCache()
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Show details, including its seasons' })
@@ -60,6 +67,7 @@ export class ShowsController {
     return this.showsUseCases.getById(id);
   }
 
+  @PublicCache()
   @Public()
   @Get(':id/seasons')
   @ApiOperation({ summary: 'Seasons for a show' })
@@ -67,6 +75,7 @@ export class ShowsController {
     return this.showsUseCases.seasons(id);
   }
 
+  @PublicCache()
   @Public()
   @Get(':id/episodes')
   @ApiOperation({ summary: 'Every episode across every season of a show' })

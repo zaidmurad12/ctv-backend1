@@ -13,6 +13,16 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/decorators.js';
 import { PrismaService } from '../prisma/prismaService.js';
 import { OpenSubtitlesService } from '../admin/infrastructure/openSubtitlesService.js';
+// Also what actually fetches subtitle.url/resolvedUrl below (not just OpenSubtitles content) -
+// proxying every source through this server, rather than redirecting the device straight to it,
+// is deliberate: confirmed on a real device (debug overlay: "ERROR: Network request failed") that
+// the app's own network can reach this backend's Cloud Run domain fine but fails outright to
+// reach some subtitle hosts directly - this backend's own outbound connection is unaffected by
+// whatever the viewer's local network can or can't reach. Using the shared helper here (not a
+// second, separate fetch-as-text) is also what fixes a real bug this route had on its own: some
+// admin-added or OpenSubtitles-resolved files are actually Windows-1256, not UTF-8, and a plain
+// `Response.text()` doesn't error on that - it silently produces the "unclear symbols" reported.
+import { fetchSubtitleTextSafely } from '../admin/infrastructure/subtitleTextUtils.js';
 
 // Public like movies/shows/episodes - the app calls this URL directly during playback (see
 // Subtitle.externalFileId's own comment in schema.prisma for why this indirection exists at
@@ -36,7 +46,7 @@ export class SubtitlesController {
   async resolve(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const subtitle = await this.prisma.subtitle.findUnique({
       where: { id },
-      select: { url: true, externalFileId: true, resolvedUrl: true, resolvedContent: true },
+      select: { url: true, externalFileId: true, resolvedUrl: true, resolvedContent: true, language: true },
     });
     if (!subtitle) throw new NotFoundException(`Subtitle "${id}" not found.`);
 
@@ -53,7 +63,7 @@ export class SubtitlesController {
     // nothing to resolve, just fetch and forward it. Not cached in resolvedContent since these
     // aren't OpenSubtitles-quota-limited and an admin may swap `url` later.
     if (!subtitle.externalFileId) {
-      const content = await this.fetchText(subtitle.url);
+      const content = await fetchSubtitleTextSafely(subtitle.url, subtitle.language);
       if (content !== null) {
         this.serveContent(res, content);
         return;
@@ -64,7 +74,7 @@ export class SubtitlesController {
 
     const freshLink = await this.openSubtitles.resolveDownloadLink(subtitle.externalFileId);
     if (freshLink) {
-      const content = await this.fetchText(freshLink);
+      const content = await fetchSubtitleTextSafely(freshLink, subtitle.language);
       if (content !== null) {
         await this.prisma.subtitle.update({
           where: { id },
@@ -88,7 +98,7 @@ export class SubtitlesController {
     // Falling back to the last resolved link (even though it may itself have since expired) at
     // least attempts something real instead of giving up immediately.
     if (subtitle.resolvedUrl) {
-      const content = await this.fetchText(subtitle.resolvedUrl);
+      const content = await fetchSubtitleTextSafely(subtitle.resolvedUrl, subtitle.language);
       if (content !== null) {
         this.serveContent(res, content);
         return;
@@ -100,24 +110,5 @@ export class SubtitlesController {
   private serveContent(res: Response, body: string): void {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.status(200).send(body);
-  }
-
-  /**
-   * Fetches `url` and returns its body as text, or null on any failure. Proxying through this
-   * server (rather than redirecting the device straight to the source) is deliberate: confirmed
-   * on a real device (debug overlay: "ERROR: Network request failed") that the app's own network
-   * can reach this backend's Cloud Run domain fine but fails outright to reach
-   * opensubtitles.com - some networks block or can't resolve that host even though it's a
-   * legitimate service, unrelated to this app's own CDN. Cloud Run's own outbound connection to
-   * opensubtitles.com is unaffected by whatever the viewer's local network can or can't reach.
-   */
-  private async fetchText(url: string): Promise<string | null> {
-    try {
-      const upstream = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!upstream.ok) return null;
-      return await upstream.text();
-    } catch {
-      return null;
-    }
   }
 }

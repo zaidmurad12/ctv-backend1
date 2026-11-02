@@ -14,10 +14,10 @@ import {
 } from 'lucide-react';
 import { AdminLayout } from '../../components/Sidebar';
 import { PreviewModal } from '../../components/PreviewModal';
+import { SourcePreview } from '../../components/SourcePreview';
 import { useAuth } from '../../context/AuthContext';
 import { adminService } from '../../services/adminService';
 import { readSubtitleFileAsText } from '../../lib/subtitleEncoding';
-import { syncStatusLabel } from '../../lib/syncStatus';
 import type {
   AdminMovieDetailDto,
   AdminStreamDto,
@@ -69,6 +69,7 @@ export default function MovieDetailPage() {
   const [uploadFormat, setUploadFormat] = useState('srt');
   const [uploadingSubtitle, setUploadingSubtitle] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showSourcePreview, setShowSourcePreview] = useState(false);
 
   function load(movieId: string) {
     adminService
@@ -322,6 +323,14 @@ export default function MovieDetailPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setShowSourcePreview(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-300 border border-sky-900 hover:bg-zinc-900 transition-colors"
+              >
+                <Eye size={12} />
+                معاينة من المصادر
+              </button>
+              <button
+                type="button"
                 disabled={reimporting}
                 onClick={() => void reimport()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-300 border border-zinc-800 hover:bg-zinc-900 transition-colors disabled:opacity-50"
@@ -553,7 +562,7 @@ export default function MovieDetailPage() {
                       {s.url}
                     </div>
                     <div className="text-[11px] text-zinc-500 mt-0.5">
-                      {s.format} · {syncStatusLabel(s)}
+                      {s.format}
                     </div>
                   </div>
                   <button
@@ -730,6 +739,24 @@ export default function MovieDetailPage() {
               </div>
             </div>
           </section>
+
+          {showSourcePreview && (
+            <SourcePreview
+              title={movie.title}
+              altTitle={movie.titleAr}
+              kind="movie"
+              linkedSources={movie.sourceLinks}
+              onSaveLinks={async (links) => {
+                if (!id) return;
+                await adminService.updateMovie(id, { sourceLinks: links });
+                load(id);
+              }}
+              poster={poster}
+              backdrop={backdrop}
+              logo={logo}
+              onClose={() => setShowSourcePreview(false)}
+            />
+          )}
 
           {showPreview && (
             <PreviewModal

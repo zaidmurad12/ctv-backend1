@@ -15,13 +15,17 @@ const execFileAsync = promisify(execFile);
 // tier quota is small enough to exhaust mid-run on an ordinary catalog size. Both gaps self-heal
 // the same way: periodically re-scan for rows still missing overviewAr/biographyAr and retry
 // them - which is exactly what these two scripts already do (they only ever touch null rows).
+// backfill-arabic-titles.mjs joins them for the same reason, closing a titleAr gap for
+// Arabic-original titles that weakens CEE/Cinemana source matching, not just display.
 //
 // Triggered by InternalController (Cloud Scheduler -> HTTP -> here), *not* @Cron - Cloud Run
 // scales to zero when idle by default, and an in-process timer only ever fires if some instance
 // happens to already be running at that wall-clock moment, which for a low-traffic admin API it
 // usually isn't. An HTTP-triggered job is what Cloud Scheduler actually spins an instance up for.
 const REPO_ROOT = process.env.REPO_ROOT || process.cwd();
-const RUN_TIMEOUT_MS = 20 * 60 * 1000;
+// Was 20 minutes - the overview and person-biography passes (paced Gemini calls) were being cut
+// off at exactly that mark night after night, so their translations never finished.
+const RUN_TIMEOUT_MS = 45 * 60 * 1000;
 
 @Injectable()
 export class TranslationBackfillService {
@@ -37,6 +41,23 @@ export class TranslationBackfillService {
     }
     this.running = true;
     try {
+      // Arabic-original titles specifically missing their own Arabic name - see this script's own
+      // comment for why that's a source-matching problem, not just a display one. Runs first: it's
+      // quick, and at the end it never got to finish - the two scripts before it were each hitting
+      // RUN_TIMEOUT_MS every day, and this one was then cut off at the same limit.
+      await this.runScript('prisma/backfill-arabic-titles.mjs');
+      // Title logos for anything still without one. Titles imported before pickLogo accepted every
+      // readable (Latin-script + Arabic) language - Turkish, German, French, ... - kept their empty
+      // logo forever, since nothing ever revisited them. Also quick (one TMDB call per title), so
+      // it runs ahead of the two slow scripts below.
+      await this.runScript('prisma/backfill-logos.mjs');
+      // Marks each logo dark/light (see the script) so the app can draw near-black logos white.
+      await this.runScript('prisma/backfill-logo-tone.mjs');
+      // Same idea for a missing poster/backdrop - fills only what's missing, never replaces.
+      await this.runScript('prisma/backfill-artwork.mjs');
+      // Ratings for titles imported before they had any votes (shown as "IMDb 0"), and recent
+      // releases whose rating is still settling.
+      await this.runScript('prisma/backfill-ratings.mjs');
       await this.runScript('prisma/backfill-overview-translations.mjs');
       await this.runScript('prisma/backfill-person-details.mjs');
     } finally {

@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { AdminLayout } from '../../components/Sidebar';
+import { CompatMarkButtons } from '../../components/CompatMarkButtons';
 import { useAuth } from '../../context/AuthContext';
 import { adminService } from '../../services/adminService';
 import type {
@@ -44,8 +45,20 @@ export default function MoviesPage() {
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [language, setLanguage] = useState('');
-  const [availability, setAvailability] = useState<'' | 'no-stream' | 'no-subtitle'>('');
+  const [sort, setSort] = useState('');
+  const [availability, setAvailability] = useState<'' | 'has-stream' | 'no-stream' | 'no-subtitle'>('');
+  // A separate control from availability on purpose - "has a stream" and "has a confirmed source
+  // match" aren't opposite ends of the same axis (a streamless movie can still have a real match;
+  // see ScheduledImportService's own sourceMatchCheck), so forcing them into one dropdown would
+  // make some real combinations (streamless + matched, the exact case worth finding) unreachable.
+  const [sourceMatch, setSourceMatch] = useState<'' | 'has-match' | 'no-match'>('');
   const [status, setStatus] = useState('');
+  // A third, independent axis - a movie can be missing its Arabic title, its artwork, both, or
+  // neither, regardless of stream/source-match status. See AdminMoviesRepository.list's own
+  // comment for why titleAr specifically matters for CEE/Cinemana source matching, not just
+  // display - this is what surfaces that gap for an admin to close (see the new backfill job,
+  // backfill-arabic-titles.mjs, for closing it automatically).
+  const [contentGap, setContentGap] = useState<'' | 'no-arabic-title' | 'no-artwork'>('');
   const [filterOptions, setFilterOptions] = useState<AdminMovieFilterOptions>({
     genres: [],
     languages: [],
@@ -72,9 +85,14 @@ export default function MoviesPage() {
     setSearch(queryString(router.query.search));
     setGenre(queryString(router.query.genre));
     setLanguage(queryString(router.query.language));
+    setSort(queryString(router.query.sort));
     const avail = queryString(router.query.availability);
-    setAvailability(avail === 'no-stream' || avail === 'no-subtitle' ? avail : '');
+    setAvailability(avail === 'has-stream' || avail === 'no-stream' || avail === 'no-subtitle' ? avail : '');
+    const match = queryString(router.query.sourceMatch);
+    setSourceMatch(match === 'has-match' || match === 'no-match' ? match : '');
     setStatus(queryString(router.query.status));
+    const gap = queryString(router.query.contentGap);
+    setContentGap(gap === 'no-arabic-title' || gap === 'no-artwork' ? gap : '');
     setHydrated(true);
   }, [router.isReady, router.query, hydrated]);
 
@@ -86,9 +104,13 @@ export default function MoviesPage() {
         search: search || undefined,
         genre: genre || undefined,
         language: language || undefined,
-        hasStream: availability === 'no-stream' ? false : undefined,
+        sort: sort || undefined,
+        hasStream: availability === 'has-stream' ? true : availability === 'no-stream' ? false : undefined,
         hasSubtitle: availability === 'no-subtitle' ? false : undefined,
+        hasSourceMatch: sourceMatch === 'has-match' ? true : sourceMatch === 'no-match' ? false : undefined,
         status: status || undefined,
+        missingArabicTitle: contentGap === 'no-arabic-title' ? true : undefined,
+        missingArtwork: contentGap === 'no-artwork' ? true : undefined,
       })
       .then((result) => {
         setMovies(result.items);
@@ -122,8 +144,11 @@ export default function MoviesPage() {
           ...(search ? { search } : {}),
           ...(genre ? { genre } : {}),
           ...(language ? { language } : {}),
+          ...(sort ? { sort } : {}),
           ...(availability ? { availability } : {}),
+          ...(sourceMatch ? { sourceMatch } : {}),
           ...(status ? { status } : {}),
+          ...(contentGap ? { contentGap } : {}),
         },
       },
       undefined,
@@ -136,7 +161,7 @@ export default function MoviesPage() {
     load();
     syncUrl(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, hydrated, page, genre, language, availability, status]);
+  }, [user, hydrated, page, genre, language, sort, availability, sourceMatch, status, contentGap]);
 
   function submitSearch(event: React.FormEvent) {
     event.preventDefault();
@@ -314,6 +339,21 @@ export default function MoviesPage() {
         </select>
 
         <select
+          value={sort}
+          onChange={(e) => {
+            setPage(1);
+            setSort(e.target.value);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+        >
+          <option value="">الأحدث إصداراً</option>
+          <option value="rating">الأعلى تقييماً</option>
+          <option value="rating-asc">الأقل تقييماً</option>
+          <option value="oldest">الأقدم إصداراً</option>
+          <option value="popularity">الأكثر شهرة</option>
+        </select>
+
+        <select
           value={availability}
           onChange={(e) => {
             setPage(1);
@@ -322,8 +362,37 @@ export default function MoviesPage() {
           className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
         >
           <option value="">كل الحالات</option>
+          <option value="has-stream">يمتلك رابط تشغيل</option>
           <option value="no-stream">بدون رابط تشغيل</option>
           <option value="no-subtitle">بدون ترجمة</option>
+        </select>
+
+        <select
+          value={sourceMatch}
+          onChange={(e) => {
+            setPage(1);
+            setSourceMatch(e.target.value as typeof sourceMatch);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+          title="مطابقة مؤكدة مع CEE/Cinemana حتى لو لم يُرفع رابط تشغيل بعد - يُفحص فقط للأعمال بدون رابط تشغيل"
+        >
+          <option value="">كل أعمال التوافق</option>
+          <option value="has-match">يمتلك توافق مع المصادر</option>
+          <option value="no-match">لا يمتلك توافق مع المصادر</option>
+        </select>
+
+        <select
+          value={contentGap}
+          onChange={(e) => {
+            setPage(1);
+            setContentGap(e.target.value as typeof contentGap);
+          }}
+          className="px-3 py-2 rounded-lg text-xs font-semibold bg-black border border-zinc-800 text-white"
+          title="الاسم العربي يؤثر على دقة مطابقة المصادر أيضاً، وليس فقط على العرض"
+        >
+          <option value="">كل الأعمال (اسم وصور)</option>
+          <option value="no-arabic-title">بدون اسم عربي</option>
+          <option value="no-artwork">بدون شعار أو خلفية</option>
         </select>
 
         <select
@@ -431,6 +500,13 @@ export default function MoviesPage() {
                   <span className="shrink-0 text-[11px] font-bold text-zinc-600">بدون ترجمة</span>
                 )}
               </Link>
+              <CompatMarkButtons
+                value={m.hasSourceMatch}
+                onSet={async (next) => {
+                  await adminService.updateMovie(m.id, { hasSourceMatch: next });
+                  load();
+                }}
+              />
               <button
                 type="button"
                 disabled={busyId === m.id}
