@@ -1,22 +1,22 @@
 // Shared by the admin movies/shows lists. "rating" is the one an admin uses to find old,
 // high-rated titles worth manually drafting; nulls sort last so unrated titles never crowd the top.
-export type AdminListOrderBy = Array<Record<string, 'asc' | 'desc' | { sort: 'asc' | 'desc'; nulls: 'first' | 'last' }>>;
+export type AdminListOrderBy = Array<Record<string, 'asc' | 'desc'>>;
 
 export function adminListOrderBy(sort?: string): AdminListOrderBy {
   switch (sort) {
     case 'rating':
-      return [{ rating: { sort: 'desc', nulls: 'last' } }, { voteCount: 'desc' }];
+      return [{ rating: 'desc' }, { voteCount: 'desc' }];
     case 'rating-asc':
-      return [{ rating: { sort: 'asc', nulls: 'last' } }, { voteCount: 'desc' }];
+      return [{ rating: 'asc' }, { voteCount: 'desc' }];
     case 'oldest':
-      return [{ releaseDate: { sort: 'asc', nulls: 'last' } }];
+      return [{ releaseDate: 'asc' }];
     case 'popularity':
-      return [{ popularity: { sort: 'desc', nulls: 'last' } }];
+      return [{ popularity: 'desc' }];
     default:
       // The app's own order (catalog queryHelpers: newest release first, id as the tiebreak) - it used
       // to be releaseDate alone, which put undated titles first (Postgres sorts NULLs first in desc)
       // and shuffled same-date titles between loads, so the list never matched the app.
-      return [{ releaseDate: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }];
+      return [{ releaseDate: 'desc' }, { id: 'asc' }];
   }
 }
 
@@ -55,7 +55,7 @@ export async function releasedFirstPage<T>(
         include,
         skip: Math.max(0, skip - releasedCount),
         take: remaining,
-        orderBy: [{ releaseDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+        orderBy: [{ releaseDate: 'asc' }, { id: 'asc' }],
       })),
     );
   }
