@@ -911,7 +911,7 @@ export class ScheduledImportService {
         OR: [{ sourceMatchCheckedAt: null }, { sourceMatchCheckedAt: { lt: cutoff } }],
       },
       select: { id: true, title: true, originalTitle: true, imdbId: true, releaseDate: true },
-      orderBy: { sourceMatchCheckedAt: { sort: 'asc', nulls: 'first' } },
+      orderBy: { sourceMatchCheckedAt: 'asc' },
       take: SOURCE_MATCH_QUOTA,
     });
 
