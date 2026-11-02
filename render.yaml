@@ -2,6 +2,7 @@ services:
   - type: web
     name: ctv-platform-api
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
