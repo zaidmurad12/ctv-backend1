@@ -794,7 +794,7 @@ export class ScheduledImportService {
         OR: [{ subtitleBackfillCheckedAt: null }, { subtitleBackfillCheckedAt: { lt: cutoff } }],
       },
       select: { id: true, title: true, originalTitle: true, imdbId: true, releaseDate: true },
-      orderBy: { subtitleBackfillCheckedAt: { sort: 'asc', nulls: 'first' } },
+      orderBy: { subtitleBackfillCheckedAt: 'asc' },
       take: SUBTITLE_BACKFILL_QUOTA,
     });
 
@@ -851,7 +851,7 @@ export class ScheduledImportService {
         releaseDate: true,
         providers: { select: { streams: { where: { isActive: true }, select: { id: true, streamUrl: true } } } },
       },
-      orderBy: { streamHealthCheckedAt: { sort: 'asc', nulls: 'first' } },
+      orderBy: { streamHealthCheckedAt: 'asc' },
       take: HEALTHCHECK_QUOTA,
     });
 
