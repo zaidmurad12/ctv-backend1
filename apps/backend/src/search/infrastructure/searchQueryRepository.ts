@@ -18,7 +18,7 @@ function normalizeArabic(text: string): string {
     .join('')
     .toLowerCase();
 }
-const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (m) => `\\${m}`);
+
 
 @Injectable()
 export class SearchQueryRepository {
@@ -144,12 +144,16 @@ export class SearchQueryRepository {
   // normalizeArabic). Only runs for a term that actually contains Arabic letters.
   private async arabicNormalizedMatches(term: string): Promise<{ movieIds: string[]; showIds: string[] }> {
     if (!/[؀-ۿ]/.test(term)) return { movieIds: [], showIds: [] };
-    const like = `%${escapeLike(normalizeArabic(term))}%`;
+    
     const [movies, shows] = await Promise.all([
-      this.prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM "Movie" WHERE "deletedAt" IS NULL AND status = 'PUBLISHED' AND translate(coalesce("titleAr", ''), ${ARABIC_FROM}, ${ARABIC_TO}) ILIKE ${like} LIMIT 300`,
-      this.prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM "TVShow" WHERE "deletedAt" IS NULL AND status = 'PUBLISHED' AND translate(coalesce("titleAr", ''), ${ARABIC_FROM}, ${ARABIC_TO}) ILIKE ${like} LIMIT 300`,
+      this.prisma.movie.findMany({ where: { deletedAt: null, status: 'PUBLISHED', titleAr: { not: null } }, select: { id: true, titleAr: true }, take: 3000 }),
+      this.prisma.tVShow.findMany({ where: { deletedAt: null, status: 'PUBLISHED', titleAr: { not: null } }, select: { id: true, titleAr: true }, take: 3000 }),
     ]);
-    return { movieIds: movies.map((m) => m.id), showIds: shows.map((s) => s.id) };
+    const needle = normalizeArabic(term);
+    return {
+      movieIds: movies.filter((m) => normalizeArabic(m.titleAr ?? '').includes(needle)).map((m) => m.id).slice(0, 300),
+      showIds: shows.filter((s) => normalizeArabic(s.titleAr ?? '').includes(needle)).map((s) => s.id).slice(0, 300),
+    };
   }
 
   async suggest(term: string, limit: number): Promise<string[]> {
