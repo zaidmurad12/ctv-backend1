@@ -39,7 +39,6 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      NODE_ENV: production
       JWT_SECRET: actions-job-not-used-0123456789abcdef0123456789
       JWT_REFRESH_SECRET: actions-job-not-used-fedcba9876543210fedcba9876543210
       PROVIDER_CINEMANA_ENABLED: "false"
@@ -86,6 +85,8 @@ jobs:
 
       - name: Episodes - new ones and missing details
         if: steps.guard.outputs.full == 'false' && env.JOB == 'episodes'
+        env:
+          NODE_ENV: production
         run: node prisma/reimport-published-shows.mjs
 
       - name: Build backend
@@ -94,4 +95,6 @@ jobs:
 
       - name: Newest releases
         if: steps.guard.outputs.full == 'false' && env.JOB == 'newest'
+        env:
+          NODE_ENV: production
         run: node apps/backend/dist/cli/runJob.js newest-import
