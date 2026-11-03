@@ -19,7 +19,7 @@ import { PrismaService } from '../prisma/prismaService.js';
 // These endpoints start one of them by hand and show how the recent runs went, so the admin panel
 // can offer "run now" buttons. They need GITHUB_DISPATCH_TOKEN (a GitHub token allowed to run
 // workflows on that repository); without it the panel says so instead of failing.
-const JOBS = ['newest', 'episodes', 'old-titles'] as const;
+const JOBS = ['newest', 'episodes'] as const;
 type JobName = (typeof JOBS)[number];
 
 export class RunJobBody {
@@ -148,7 +148,7 @@ export class JobsAdminController {
 
   @Post('run')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Start an import job now (newest | episodes | old-titles)' })
+  @ApiOperation({ summary: 'Start an import job now (newest | episodes)' })
   run(@Body() body: RunJobBody) {
     return this.service.run(body.job);
   }

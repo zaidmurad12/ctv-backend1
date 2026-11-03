@@ -1,6 +1,6 @@
 name: Catalog jobs
 
-run-name: "${{ github.event.inputs.job == 'episodes' && 'تحديث الحلقات والمواسم' || github.event.inputs.job == 'old-titles' && 'استيراد الأعمال القديمة' || 'استيراد الأعمال الحديثة' }}"
+run-name: "${{ github.event.inputs.job == 'episodes' && 'تحديث الحلقات والمواسم' || 'استيراد الأعمال الحديثة' }}"
 
 # Runs on GitHub's free runners against the Neon database. Sized for the free tiers:
 #  - GitHub Actions: this repository is private, which gives 2,000 free minutes a month. The daily
@@ -17,14 +17,13 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: "newest | episodes | old-titles"
+        description: "newest | episodes"
         required: true
         default: newest
         type: choice
         options:
           - newest
           - episodes
-          - old-titles
 
 concurrency:
   group: catalog-jobs
@@ -52,9 +51,6 @@ jobs:
       SCHEDULED_IMPORT_NEWEST_PER_BUCKET: "5"
       SCHEDULED_IMPORT_NEWEST_PAGES: "1"
       SCHEDULED_IMPORT_NEWEST_TIME_BUDGET_MIN: "10"
-      # Old/popular titles: a modest batch per manual run.
-      SCHEDULED_IMPORT_DAILY_QUOTA: "40"
-      SCHEDULED_IMPORT_TIME_BUDGET_MIN: "25"
       SCHEDULED_IMPORT_CONCURRENCY: "2"
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +95,3 @@ jobs:
       - name: Newest releases
         if: steps.guard.outputs.full == 'false' && env.JOB == 'newest'
         run: node apps/backend/dist/cli/runJob.js newest-import
-
-      - name: Old and popular titles
-        if: steps.guard.outputs.full == 'false' && env.JOB == 'old-titles'
-        run: node apps/backend/dist/cli/runJob.js old-titles

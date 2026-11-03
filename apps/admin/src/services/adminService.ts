@@ -43,7 +43,7 @@ export interface PagedResult<T> {
   readonly meta: PaginationMeta;
 }
 
-export type JobName = 'newest' | 'episodes' | 'old-titles';
+export type JobName = 'newest' | 'episodes';
 
 export interface JobsOverview {
   configured: boolean;
@@ -281,9 +281,7 @@ export const adminService = {
     return apiRequest('admin/source-check/results', { method: 'POST', body: { results } });
   },
 
-  refreshShowEpisodeImages(
-    id: string,
-  ): Promise<{
+  refreshShowEpisodeImages(id: string): Promise<{
     updated: number;
     unchanged: number;
     missing: number;

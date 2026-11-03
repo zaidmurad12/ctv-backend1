@@ -11,7 +11,6 @@ import { ScheduledImportService } from '../admin/infrastructure/scheduledImportS
 // a refused connection as "link is dead" and unpublish working titles.
 const jobs: Record<string, (service: ScheduledImportService) => Promise<void>> = {
   'newest-import': (service) => service.runNewestOnly(),
-  'old-titles': (service) => service.run(),
 };
 
 async function main(): Promise<void> {

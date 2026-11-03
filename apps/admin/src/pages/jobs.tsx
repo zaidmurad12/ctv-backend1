@@ -17,12 +17,6 @@ const JOBS: Array<{ job: JobName; title: string; text: string; auto: boolean }> 
     text: 'يضيف الحلقات الجديدة ويكمل صور الحلقات وأسماءها وأوصافها ومددها الناقصة (للأعمال الحديثة). يدوي فقط.',
     auto: false,
   },
-  {
-    job: 'old-titles',
-    title: 'استيراد الأعمال القديمة والشائعة',
-    text: 'يستورد دفعة من الأعمال الشائعة من TMDB. يدوي فقط، ويتوقف تلقائياً قرب امتلاء قاعدة البيانات.',
-    auto: false,
-  },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -139,7 +133,7 @@ export default function JobsPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           {JOBS.map((item) => (
             <div
               key={item.job}
