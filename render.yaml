@@ -1,0 +1,41 @@
+# Free Render web service for the API, running the same PostgreSQL code that ran on Google Cloud.
+# The catalog stays in the existing Neon database - nothing is copied or converted.
+# Secrets (sync: false) are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: ctv-platform-api
+    runtime: docker
+    plan: free
+    branch: neon-postgres
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENSUBTITLES_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: APP_HOST
+        value: 0.0.0.0
+      - key: API_PREFIX
+        value: /api/v1
+      - key: SWAGGER_ENABLED
+        value: "false"
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: PROVIDER_CINEMANA_ENABLED
+        value: "true"
+      - key: PROVIDER_CINEMANA_BASE_URL
+        value: https://cinemana.shabakaty.com
+      - key: PROVIDER_CONSUMET_ENABLED
+        value: "false"

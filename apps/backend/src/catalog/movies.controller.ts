@@ -1,10 +1,12 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { PublicCache } from '../common/interceptors/publicCacheInterceptor.js';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { AuthenticatedUser } from '../common/auth/authenticatedUser.js';
 import { CurrentUser, Public } from '../common/decorators/decorators.js';
 import { CatalogListQueryDto } from './dto.js';
 import type {
+  FeaturedItemDto,
   MovieDetailDto,
   MovieSummaryDto,
   StreamResponseDto,
@@ -22,6 +24,7 @@ const MOVIES_THROTTLE = { default: { limit: 120, ttl: 60_000 } };
 export class MoviesController {
   constructor(private readonly moviesUseCases: MoviesUseCases) {}
 
+  @PublicCache()
   @Public()
   @Get()
   @ApiOperation({ summary: 'List movies with search/sort/pagination' })
@@ -53,6 +56,16 @@ export class MoviesController {
     return this.moviesUseCases.topRated(20);
   }
 
+  @PublicCache()
+  @Public()
+  @Get('featured')
+  @ApiOperation({
+    summary: 'Admin-curated home hero/banner carousel (movies and shows), in chosen order',
+  })
+  featured(): Promise<FeaturedItemDto[]> {
+    return this.moviesUseCases.featured();
+  }
+
   @ApiBearerAuth()
   @Get('recommended')
   @ApiOperation({ summary: 'Movies recommended for the authenticated user, based on genres' })
@@ -60,9 +73,23 @@ export class MoviesController {
     return this.moviesUseCases.recommended(user.userId, 20);
   }
 
+  // Public like list()/getById() above - the app looks this up right after loading a movie's
+  // own detail page (see collectionId on MovieDetailDto), same guest-accessible browsing flow.
+  @PublicCache()
+  @Public()
+  @Get('collection/:collectionId')
+  @ApiOperation({ summary: "Other parts sharing a movie's TMDB collection/franchise" })
+  byCollection(
+    @Param('collectionId') collectionId: string,
+    @Query('exclude') exclude?: string,
+  ): Promise<MovieSummaryDto[]> {
+    return this.moviesUseCases.byCollection(collectionId, exclude);
+  }
+
   // Matches `list()`'s @Public() above: the Android TV app browses movies without a login
   // gate, so a movie's own detail page (metadata only — streams/subtitles below stay
   // authenticated) must be reachable the same way, or tapping any browsed card 401s.
+  @PublicCache()
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Movie details, including streams and subtitles' })

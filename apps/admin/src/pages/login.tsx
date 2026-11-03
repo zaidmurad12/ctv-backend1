@@ -1,96 +1,82 @@
-import type { ReactElement } from 'react';
+import type { FormEvent } from 'react';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Alert, Box, Button, Paper, TextField, Typography } from '@mui/material';
+import { useRouter } from 'next/router';
+import { Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../lib/apiError';
-import type { NextPageWithLayout } from './_app';
 
-const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-
-const Login: NextPageWithLayout = () => {
+export default function LoginPage() {
   const { login } = useAuth();
-  const [serverError, setServerError] = useState<string | undefined>(undefined);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function onSubmit(values: LoginFormValues) {
-    setServerError(undefined);
+  const forbidden = router.query.forbidden === '1';
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(undefined);
+    setIsSubmitting(true);
     try {
-      await login(values.email, values.password);
-    } catch (error) {
-      setServerError(
-        error instanceof ApiError ? error.message : 'Unable to sign in. Please try again.',
-      );
+      await login(email, password);
+    } catch (err) {
+      setError(err instanceof ApiError || err instanceof Error ? err.message : 'فشل تسجيل الدخول.');
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        px: 2,
-        bgcolor: 'background.default',
-      }}
-    >
-      <Paper variant="outlined" sx={{ p: 4, width: '100%', maxWidth: 400 }}>
-        <Typography variant="h5" fontWeight={700} gutterBottom>
-          CTV Platform Admin
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Sign in with your administrator, editor, or viewer account.
-        </Typography>
-
-        {serverError ? (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {serverError}
-          </Alert>
-        ) : undefined}
-
-        <Box
-          component="form"
-          onSubmit={handleSubmit(onSubmit)}
-          noValidate
-          sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
-        >
-          <TextField
-            label="Email"
+    <div className="min-h-screen flex flex-col items-center justify-center gap-7 p-6 bg-black">
+      <div className="inline-flex items-center gap-2.5 text-2xl font-black">
+        <span className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-[10px] bg-white text-black">
+          <Shield size={20} />
+        </span>
+        CTV Admin
+      </div>
+      <form
+        className="w-[340px] flex flex-col gap-4 bg-[#0a0a0a] border border-zinc-800 rounded-2xl p-9 shadow-2xl"
+        onSubmit={handleSubmit}
+      >
+        <h1 className="text-xl font-black">تسجيل الدخول</h1>
+        <p className="-mt-2 text-sm text-zinc-500">للمسؤولين فقط.</p>
+        <label className="flex flex-col gap-1.5 text-sm font-semibold text-zinc-400">
+          البريد الإلكتروني
+          <input
             type="email"
-            autoComplete="email"
-            error={Boolean(errors.email)}
-            helperText={errors.email?.message}
-            {...register('email')}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            autoFocus
+            className="px-3.5 py-2.5 rounded-lg border border-zinc-800 bg-black text-white text-sm focus:outline-none focus:border-white transition-colors"
           />
-          <TextField
-            label="Password"
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm font-semibold text-zinc-400">
+          كلمة المرور
+          <input
             type="password"
-            autoComplete="current-password"
-            error={Boolean(errors.password)}
-            helperText={errors.password?.message}
-            {...register('password')}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            className="px-3.5 py-2.5 rounded-lg border border-zinc-800 bg-black text-white text-sm focus:outline-none focus:border-white transition-colors"
           />
-          <Button type="submit" variant="contained" size="large" disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in…' : 'Sign in'}
-          </Button>
-        </Box>
-      </Paper>
-    </Box>
+        </label>
+        {forbidden && !error && (
+          <p className="text-sm text-amber-400">
+            هذا الحساب لا يملك صلاحية الوصول إلى لوحة التحكم.
+          </p>
+        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="mt-1 py-3 rounded-lg bg-white text-black font-bold text-sm disabled:opacity-60 disabled:cursor-default hover:bg-zinc-200 transition-colors"
+        >
+          {isSubmitting ? 'جارٍ الدخول...' : 'دخول'}
+        </button>
+      </form>
+    </div>
   );
-};
-
-Login.getLayout = (page: ReactElement) => page;
-
-export default Login;
+}

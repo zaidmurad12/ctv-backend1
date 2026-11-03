@@ -36,14 +36,14 @@ export default [
     },
   },
   {
-    // apps/web is the only Next.js/React app — scoped here so react-hooks/@next/jsx-a11y
-    // rules aren't forced onto the NestJS backend or the native Android TV app. Registered
-    // (not just installed) because inline `eslint-disable-next-line react-hooks/...` etc.
-    // comments in this app fail flat-config resolution otherwise, even with the rules off.
+    // apps/web and apps/admin are the only Next.js/React apps — scoped here so react-hooks/
+    // @next/jsx-a11y rules aren't forced onto the NestJS backend or the native Android TV app.
+    // Registered (not just installed) because inline `eslint-disable-next-line react-hooks/...`
+    // etc. comments in these apps fail flat-config resolution otherwise, even with the rules off.
     // Only the specific rules those existing comments reference are enabled — not either
     // plugin's full "recommended" preset, which (react-hooks v7 especially) pulls in many
     // newer React-Compiler-era rules this codebase was never actually checked against.
-    files: ['apps/web/**/*.{ts,tsx}'],
+    files: ['apps/web/**/*.{ts,tsx}', 'apps/admin/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
       '@next/next': nextPlugin,

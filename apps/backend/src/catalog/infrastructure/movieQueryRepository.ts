@@ -7,8 +7,10 @@ import type {
   StreamResponseDto,
   SubtitleResponseDto,
 } from '../dto.js';
-import { mapImagesToArtwork } from './artworkMapper.js';
-import { mapCast, mapDirector, mapGenres } from './creditsMapper.js';
+import { mapImagesToArtwork, withStoredLogo } from './artworkMapper.js';
+import { mapCast, mapCountry, mapDirector, mapGenres, mapWriter } from './creditsMapper.js';
+import { attachPartNumbers } from './partNumbers.js';
+import { parseSourceLinks } from '../../common/sourceLinks.js';
 import { resolveOrderBy, resolveSkip } from './queryHelpers.js';
 
 export interface MovieListParams {
@@ -19,7 +21,15 @@ export interface MovieListParams {
   readonly search?: string;
   readonly year?: number;
   readonly language?: string;
+  readonly genre?: string;
+  readonly country?: string;
+  readonly person?: string;
+  readonly collection?: string;
+  readonly yearFrom?: number;
+  readonly yearTo?: number;
   readonly minVotes?: number;
+  readonly minRating?: number;
+  readonly available?: boolean;
 }
 
 @Injectable()
@@ -33,12 +43,25 @@ export class MovieQueryRepository {
   async list(params: MovieListParams): Promise<{ items: MovieSummaryDto[]; total: number }> {
     const skip = resolveSkip(params.page, params.limit);
     const take = params.limit ?? 20;
-    const where = this.buildWhere(params);
+    // Sorted by release date = "newest releases": only what's actually out. A title with a future
+    // release date (imported ahead of time) used to sit at the very top of every "newest" list
+    // until that date came - reported as unreleased films stuck at the front of the latest row
+    // while newer, already-released ones sat below them. Each one now appears on its own
+    // release day, so the list keeps moving on its own.
+    const baseWhere = this.buildWhere(params);
+    const where: Record<string, unknown> =
+      params.sort === 'releaseDate'
+        ? { AND: [baseWhere, { releaseDate: { lte: new Date() } }] }
+        : baseWhere;
 
     const [rows, total] = await Promise.all([
       this.prisma.movie.findMany({
         where,
-        include: { images: true },
+        include: {
+          images: true,
+          genres: { include: { genre: true } },
+          providers: { include: { streams: true } },
+        },
         skip,
         take,
         orderBy: resolveOrderBy(params.sort, params.order),
@@ -46,7 +69,13 @@ export class MovieQueryRepository {
       this.prisma.movie.count({ where }),
     ]);
 
-    return { items: rows.map((row) => this.toSummary(row)), total };
+    return {
+      items: await attachPartNumbers(
+        this.prisma,
+        rows.map((row) => this.toSummary(row)),
+      ),
+      total,
+    };
   }
 
   async findById(id: string): Promise<MovieDetailDto | null> {
@@ -57,6 +86,8 @@ export class MovieQueryRepository {
         genres: { include: { genre: true } },
         castMembers: { include: { person: true }, orderBy: { order: 'asc' }, take: 8 },
         crewMembers: { include: { person: true } },
+        countries: { include: { country: true } },
+        providers: { include: { streams: true } },
       },
     });
     if (!row) {
@@ -64,16 +95,24 @@ export class MovieQueryRepository {
     }
 
     const [streams, subtitles] = await Promise.all([this.listStreams(id), this.listSubtitles(id)]);
+    const [summaryWithPartNumber] = await attachPartNumbers(this.prisma, [this.toSummary(row)]);
     return {
-      ...this.toSummary(row),
+      ...summaryWithPartNumber,
       originalTitle: row.originalTitle,
       tagline: row.tagline,
-      titleAr: row.titleAr,
       genres: mapGenres(row.genres),
       cast: mapCast(row.castMembers),
       director: mapDirector(row.crewMembers),
+      writer: mapWriter(row.crewMembers),
+      country: mapCountry(row.countries),
       streams,
       subtitles,
+      // row.trailer (see prisma/schema.prisma's own Movie.trailer) is populated automatically at
+      // import time (extractEnrichmentFields.ts) - this DTO simply never had a field to carry it
+      // to any client until now, so every trailer TMDB ever found was silently discarded here
+      // regardless of the import having worked correctly.
+      trailerUrl: row.trailer,
+      sourceLinks: parseSourceLinks(row.sourceLinks),
     };
   }
 
@@ -101,6 +140,8 @@ export class MovieQueryRepository {
       format: row.format,
       url: row.url,
       isDefault: row.isDefault,
+      defaultOffsetMs: row.defaultOffsetMs,
+      defaultSpeed: row.defaultSpeed,
     }));
   }
 
@@ -151,7 +192,11 @@ export class MovieQueryRepository {
         id: { notIn: seenMovieIds },
         genres: { some: { genreId: { in: genreIds } } },
       },
-      include: { images: true, genres: { select: { genreId: true } } },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        providers: { include: { streams: true } },
+      },
       take: Math.max(limit * 5, 100),
       orderBy: { popularity: 'desc' },
     });
@@ -168,25 +213,96 @@ export class MovieQueryRepository {
       return Number(b.row.popularity ?? 0) - Number(a.row.popularity ?? 0);
     });
 
-    return scored.slice(0, limit).map(({ row }) => this.toSummary(row));
+    return attachPartNumbers(
+      this.prisma,
+      scored.slice(0, limit).map(({ row }) => this.toSummary(row)),
+    );
   }
 
   private buildWhere(params: MovieListParams): Record<string, unknown> {
     const where: Record<string, unknown> = { deletedAt: null, status: 'PUBLISHED' };
-    if (params.search) {
-      where.title = { contains: params.search, mode: 'insensitive' };
+    // "Available titles only" (app setting): passed the admin panel's source-compatibility check,
+    // or has an active stream of its own.
+    if (params.available) {
+      where.AND = [
+        {
+          OR: [
+            { hasSourceMatch: true },
+            { providers: { some: { streams: { some: { isActive: true } } } } },
+          ],
+        },
+      ];
     }
-    if (params.year) {
-      where.releaseDate = {
-        gte: new Date(Date.UTC(params.year, 0, 1)),
-        lt: new Date(Date.UTC(params.year + 1, 0, 1)),
-      };
+    if (params.search) {
+      // Only ever matched the English `title` column - searching "الجوكر" for "Joker" (or any
+      // other Arabic-titled search) always came back empty even though the movie was in the
+      // catalog, since titleAr was never checked at all.
+      where.OR = [
+        { title: { contains: params.search, mode: 'insensitive' } },
+        { titleAr: { contains: params.search, mode: 'insensitive' } },
+      ];
+    }
+    if (params.year || params.yearFrom || params.yearTo) {
+      where.releaseDate = params.year
+        ? {
+            gte: new Date(Date.UTC(params.year, 0, 1)),
+            lt: new Date(Date.UTC(params.year + 1, 0, 1)),
+          }
+        : {
+            ...(params.yearFrom ? { gte: new Date(Date.UTC(params.yearFrom, 0, 1)) } : {}),
+            ...(params.yearTo ? { lt: new Date(Date.UTC(params.yearTo + 1, 0, 1)) } : {}),
+          };
     }
     if (params.language) {
       where.originalLanguage = params.language;
     }
+    if (params.genre) {
+      // genres is a many-to-many through MovieGenre - `some` matches a movie that has at least
+      // one linked genre row whose own genre.name equals the requested value. mapGenres()
+      // (creditsMapper.ts) exposes genre.name verbatim as each movie's own `genres` array
+      // client-side, so this is an exact match against the same string the app already filters
+      // by locally today - no slug/id translation needed on either side.
+      where.genres = { some: { genre: { name: params.genre } } };
+    }
+    if (params.country) {
+      where.countries = {
+        some: {
+          country: {
+            OR: [
+              { name: { contains: params.country, mode: 'insensitive' } },
+              { isoCode: { equals: params.country, mode: 'insensitive' } },
+            ],
+          },
+        },
+      };
+    }
+    if (params.person) {
+      const person = {
+        OR: [
+          {
+            castMembers: {
+              some: { person: { name: { contains: params.person, mode: 'insensitive' } } },
+            },
+          },
+          {
+            crewMembers: {
+              some: { person: { name: { contains: params.person, mode: 'insensitive' } } },
+            },
+          },
+        ],
+      };
+      where.AND = [...((where.AND as Array<Record<string, unknown>> | undefined) ?? []), person];
+    }
+    if (params.collection) {
+      where.collection = {
+        is: { title: { contains: params.collection, mode: 'insensitive' }, deletedAt: null },
+      };
+    }
     if (params.minVotes) {
       where.voteCount = { gte: params.minVotes };
+    }
+    if (params.minRating) {
+      where.rating = { gte: params.minRating };
     }
     return where;
   }
@@ -194,22 +310,109 @@ export class MovieQueryRepository {
   private toSummary(row: {
     id: string;
     title: string;
+    titleAr: string | null;
     overview: string | null;
+    overviewAr: string | null;
+    imdbId: string | null;
     releaseDate: Date | null;
     rating: unknown;
     runtime: number | null;
+    ageRating: string | null;
+    originalLanguage: string | null;
     status: string;
     images: Array<{ type: string; url: string }>;
+    logo?: string | null;
+    hasSourceMatch?: boolean | null;
+    genres: Parameters<typeof mapGenres>[0];
+    collectionId?: string | null;
+    providers: Array<{ streams: Array<{ isActive: boolean }> }>;
   }): MovieSummaryDto {
     return {
       id: row.id,
       title: row.title,
+      titleAr: row.titleAr,
       overview: row.overview,
+      overviewAr: row.overviewAr,
+      imdbId: row.imdbId,
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
       rating: row.rating === null ? null : Number(row.rating),
       runtime: row.runtime,
+      ageRating: row.ageRating,
+      originalLanguage: row.originalLanguage,
+      hasSourceMatch: row.hasSourceMatch ?? null,
       status: row.status,
-      artwork: mapImagesToArtwork(row.images),
+      genres: mapGenres(row.genres),
+      hasPlayableStream: row.providers.some((p) => p.streams.some((s) => s.isActive)),
+      collectionId: row.collectionId ?? null,
+      artwork: withStoredLogo(mapImagesToArtwork(row.images), row.logo),
     };
+  }
+
+  /** Published movies by id, returned in the order of `ids` (a missing/unpublished one is skipped) - for admin-built home rows. */
+  async byIds(ids: string[]): Promise<MovieSummaryDto[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.movie.findMany({
+      where: { id: { in: ids }, deletedAt: null, status: 'PUBLISHED' },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        providers: { include: { streams: true } },
+      },
+    });
+    const summaries = await attachPartNumbers(
+      this.prisma,
+      rows.map((row) => this.toSummary(row)),
+    );
+    const byId = new Map(summaries.map((summary) => [summary.id, summary]));
+    return ids.map((id) => byId.get(id)).filter((s): s is MovieSummaryDto => !!s);
+  }
+
+  /**
+   * Movies curated for the home hero carousel (see Movie.featuredOrder), in admin-chosen order.
+   * featuredOrder is carried on each result (not part of MovieSummaryDto itself) purely so
+   * MoviesUseCases.featured() can merge this with ShowQueryRepository's own featured() by that
+   * shared order value - the carousel can mix movies and shows into one single, interleaved
+   * sequence, which needs the raw number, not just "already sorted within this one table".
+   */
+  async featured(): Promise<Array<MovieSummaryDto & { featuredOrder: number }>> {
+    const rows = await this.prisma.movie.findMany({
+      where: { deletedAt: null, status: 'PUBLISHED', featuredOrder: { not: null } },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        providers: { include: { streams: true } },
+      },
+      orderBy: { featuredOrder: 'asc' },
+    });
+    const summaries = await attachPartNumbers(
+      this.prisma,
+      rows.map((row) => this.toSummary(row)),
+    );
+    return summaries.map((summary, i) => ({
+      ...summary,
+      featuredOrder: rows[i].featuredOrder as number,
+    }));
+  }
+
+  /** Sibling entries in the same TMDB collection/franchise (see Movie.collectionId), for the "Parts" rail on a movie's detail page. */
+  async byCollection(collectionId: string, excludeId?: string): Promise<MovieSummaryDto[]> {
+    const rows = await this.prisma.movie.findMany({
+      where: {
+        deletedAt: null,
+        status: 'PUBLISHED',
+        collectionId,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      include: {
+        images: true,
+        genres: { include: { genre: true } },
+        providers: { include: { streams: true } },
+      },
+      orderBy: { releaseDate: 'asc' },
+    });
+    return attachPartNumbers(
+      this.prisma,
+      rows.map((row) => this.toSummary(row)),
+    );
   }
 }

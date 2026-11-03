@@ -2,6 +2,7 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module.js';
+import { AppUpdateModule } from './app-update/appUpdate.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { AllExceptionsFilter } from './common/filters/allExceptionsFilter.js';
@@ -12,10 +13,12 @@ import { BackendConfigModule } from './config/backendConfigModule.js';
 import { ContinueWatchingModule } from './continue-watching/continueWatching.module.js';
 import { FavoritesModule } from './favorites/favorites.module.js';
 import { HealthModule } from './health/health.module.js';
+import { InternalModule } from './internal/internal.module.js';
 import { PrismaModule } from './prisma/prismaModule.js';
 import { SearchModule } from './search/search.module.js';
 import { UsersModule } from './users/users.module.js';
 import { WatchHistoryModule } from './watch-history/watchHistory.module.js';
+import { YoutubeEmbedModule } from './youtube-embed/youtubeEmbed.module.js';
 
 @Module({
   imports: [
@@ -30,7 +33,10 @@ import { WatchHistoryModule } from './watch-history/watchHistory.module.js';
     WatchHistoryModule,
     ContinueWatchingModule,
     AdminModule,
+    InternalModule,
     HealthModule,
+    YoutubeEmbedModule,
+    AppUpdateModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

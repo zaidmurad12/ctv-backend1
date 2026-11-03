@@ -66,6 +66,23 @@ enum SettingTypeEnum {
   JSON
 }
 
+enum SourceSiteEnum {
+  CEE
+  CINEMANA
+}
+
+enum SourceKindEnum {
+  MOVIE
+  SERIES
+}
+
+enum SourceMatchStatusEnum {
+  PENDING
+  MATCHED
+  UNMATCHED
+  SKIPPED
+}
+
 model Provider {
   id               String            @id @default(uuid())
   name             String            @db.VarChar(255)
@@ -99,6 +116,11 @@ model Movie {
   title              String           @db.VarChar(500)
   originalTitle      String?          @db.VarChar(500)
   overview           String?          @db.Text
+  // TMDB's own community-contributed Arabic translation when it has one (see
+  // extractArabicTranslation in bootstrap-importer.mjs) - free and often already correct, unlike
+  // biographyAr which has no such source and needs a real (quota-limited) Gemini call every time.
+  // Only actually Gemini-translated as a fallback when TMDB has no Arabic overview on file.
+  overviewAr         String?          @db.Text
   tagline            String?          @db.VarChar(500)
   releaseDate        DateTime?
   runtime            Int?
@@ -116,6 +138,30 @@ model Movie {
   budget             BigInt?
   revenue            BigInt?
   titleAr            String?          @db.VarChar(500)
+  // Null = not in the home hero/banner carousel; otherwise its position there (0 = first).
+  // Set exclusively through the admin panel's banner-management page - never by the TMDB
+  // importer, so re-importing a movie never disturbs a curated banner selection.
+  featuredOrder      Int?
+  // Admin-chosen CEE/Cinemana entries this title plays from: [{ source: "cee"|"cinemana", nb, kind: "movie"|"series" }].
+  // Lets a title be pinned to the right source entry when automatic title matching cannot find it - e.g. a
+  // stage play a source lists under its SERIES section (kind "series") although it is a movie here.
+  sourceLinks        Json?
+  homeSectionItems   HomeSectionItem[]
+  // ScheduledImportService's own bookkeeping (see its subtitleBackfill/healthCheck comments) -
+  // null until that pass has ever looked at this movie once. Lets each pass rotate through
+  // oldest-checked-first and skip a movie it already tried recently, instead of re-searching the
+  // same not-found title (or re-probing the same still-dead link) on every single run forever.
+  subtitleBackfillCheckedAt DateTime?
+  streamHealthCheckedAt     DateTime?
+  // Whether this movie was found on CEE/Cinemana by title/IMDb match (see
+  // ScheduledImportService's own sourceMatchCheck) - only ever populated for movies with no
+  // active stream of their own yet, since a movie that already plays doesn't need this. Null
+  // means "not checked yet", not "no match" - the admin list's own filter treats those
+  // differently (see AdminListMoviesQueryDto's own comment). Lets the admin panel show which
+  // sourceless titles the app can still actually play live (a real source match exists, just
+  // never pulled into a stored Stream row) versus which ones are genuinely dead.
+  hasSourceMatch            Boolean?
+  sourceMatchCheckedAt      DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -134,6 +180,8 @@ model Movie {
   favorites          Favorite[]
   watchHistory       WatchHistory[]
   continueWatching   ContinueWatching[]
+  syncIssue          SyncIssue?
+  sourceCatalogItems SourceCatalogItem[]
 
   @@index([tmdbId])
   @@index([imdbId])
@@ -150,6 +198,8 @@ model TVShow {
   title              String           @db.VarChar(500)
   originalTitle      String?          @db.VarChar(500)
   overview           String?          @db.Text
+  // See Movie.overviewAr's own comment - same TMDB-translation-first, Gemini-fallback source.
+  overviewAr         String?          @db.Text
   status             MovieStatusEnum  @default(PENDING)
   releaseDate        DateTime?
   lastAirDate        DateTime?
@@ -157,12 +207,28 @@ model TVShow {
   numberOfEpisodes   Int              @default(0)
   rating             Decimal?         @db.Decimal(4, 2)
   voteCount          Int              @default(0)
+  ageRating          String?          @db.VarChar(50)
+  originalLanguage   String?          @db.VarChar(10)
   poster             String?          @db.VarChar(1000)
   backdrop           String?          @db.VarChar(1000)
   logo               String?          @db.VarChar(1000)
   homepage           String?          @db.VarChar(1000)
   popularity         Decimal?         @db.Decimal(10, 2)
   titleAr            String?          @db.VarChar(500)
+  // Null = not in the home hero/banner carousel; otherwise its position there (0 = first) -
+  // same convention as Movie.featuredOrder (see its own comment), merged with movies' own
+  // ordering at read time since the carousel can mix both.
+  featuredOrder      Int?
+  // Admin-chosen CEE/Cinemana entries this show plays from (see Movie.sourceLinks) - overrides the app's automatic title matching.
+  sourceLinks        Json?
+  homeSectionItems   HomeSectionItem[]
+  // Set by the admin "restructure seasons" tool: this show's season/episode layout was hand-arranged
+  // to match the playback sources (e.g. Money Heist as 5 parts, not TMDB's 3 seasons). A TMDB
+  // reimport must not rebuild seasons/episodes from TMDB's own grouping while this is true.
+  seasonLayoutCustom Boolean          @default(false)
+  // Manually marked by an admin after testing in the app (true = plays from a source, false =
+  // tested and does not, null = not tested yet) - see Movie.hasSourceMatch.
+  hasSourceMatch     Boolean?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
@@ -179,6 +245,7 @@ model TVShow {
   favorites          Favorite[]
   watchHistory       WatchHistory[]
   continueWatching   ContinueWatching[]
+  sourceCatalogItems SourceCatalogItem[]
 
   @@index([tmdbId])
   @@index([title])
@@ -213,6 +280,14 @@ model Episode {
   episodeNumber  Int
   title          String    @db.VarChar(500)
   overview       String?   @db.Text
+  // Fetched via a second per-season TMDB request with language=ar (see importShow in
+  // bootstrap-importer.mjs) rather than Gemini - one extra call covers every episode in the
+  // season at once, and TMDB frequently already has these for popular shows. Left null (falls
+  // back to the English title/overview in the app) when TMDB has no Arabic data for an episode -
+  // not Gemini-translated, unlike Movie/TVShow's own overviewAr, since doing that per episode
+  // would multiply Gemini's already-tight quota by the show's entire episode count.
+  titleAr        String?   @db.VarChar(500)
+  overviewAr     String?   @db.Text
   runtime        Int?
   airDate        DateTime?
   rating         Decimal?  @db.Decimal(4, 2)
@@ -225,6 +300,7 @@ model Episode {
   providers      EpisodeProvider[]
   watchHistory   WatchHistory[]
   continueWatching ContinueWatching[]
+  syncIssue      SyncIssue?
 
   @@unique([seasonId, episodeNumber])
   @@index([seasonId])
@@ -327,6 +403,53 @@ model Subtitle {
   format             String            @db.VarChar(20)
   url                String            @db.VarChar(2000)
   isDefault          Boolean           @default(false)
+  // Set only for subtitles resolved through OpenSubtitles (see OpenSubtitlesService) - their
+  // download links expire quickly, so `url` here points at this backend's own stable
+  // /subtitles/:id/resolve redirect instead of a temporary OpenSubtitles link. That endpoint
+  // re-resolves a fresh download link from OpenSubtitles using this file id every time the app
+  // actually calls it, rather than this server ever downloading/storing the subtitle file
+  // itself. Manually admin-added subtitles leave this null and use `url` directly as-is.
+  externalFileId     String?           @db.VarChar(255)
+  // Last real OpenSubtitles download link resolved for externalFileId, plus when. Used two
+  // ways: (1) skip re-resolving (and burning OpenSubtitles' daily download quota) if the cached
+  // link is still within RESOLVE_CACHE_TTL of subtitles.controller.ts; (2) serve as a fallback
+  // when a fresh resolve fails (quota exhausted, network error) so playback still gets *a*
+  // working link instead of the resolve endpoint redirecting to itself - the actual cause of
+  // subtitles silently never appearing in the app despite the row existing.
+  resolvedUrl        String?           @db.VarChar(2000)
+  // The actual subtitle file contents, fetched once and kept forever. OpenSubtitles' free-tier
+  // key gets an observed daily *download* quota in the single digits (~5-10), completely
+  // separate from - and far smaller than - its search quota; re-resolving the same file every
+  // RESOLVE_CACHE_TTL (6h) burns a fresh unit each time, so a handful of viewers spread across
+  // one day already exhausts it and every other title 502s until the quota resets at UTC
+  // midnight. Since resolveDownloadLink's link is the only quota-limited step - fetching the
+  // text from it isn't - persisting that text here means each externalFileId ever costs the
+  // quota exactly once, for its entire lifetime, not once per cache window.
+  resolvedContent    String?
+  // Sampled at several points across the runtime (not just two) by audioSyncAnalysisService.ts,
+  // right after this row is created (import/hash-match/manual upload - see its own call sites) -
+  // each entry is `{ tMs, offsetMs }`, the real detected correction *at that point in the video*,
+  // sorted ascending by tMs. The app interpolates between the two nearest anchors instead of
+  // applying one constant offset+speed pair everywhere (see VideoPlayer.tsx's correctedSubtitleTime
+  // usage) - a single global linear fit (the old defaultOffsetMs/defaultSpeed below) can only ever
+  // be right at one moment or drift smoothly; it can't represent a subtitle that's fine for a while
+  // and then jumps to a different fixed offset, which is exactly what a subtitle authored for a
+  // *different cut* of the same title (a trimmed/extended intro, an inserted/removed recap or ad
+  // break) produces - reported as "matches in one part of the movie, not another." Null until
+  // analysis has run at least once, or if every sample point failed to find a confident match.
+  syncAnchors        Json?
+  // The single-point/single-line predecessor to syncAnchors above - kept only as a legacy
+  // fallback for whatever a subtitle's own analysis hasn't been (or couldn't be) computed as
+  // anchors for (see VideoPlayer.tsx: used only when syncAnchors is null/empty). New analyses
+  // still populate this too - defaultOffsetMs mirrors the first anchor, defaultSpeed stays 1 -
+  // purely so nothing still reading these two fields directly (e.g. an admin panel display) sees
+  // a stale, no-longer-produced value.
+  defaultOffsetMs    Int               @default(0)
+  defaultSpeed       Float             @default(1)
+  // "pending" until the (fire-and-forget, can take a minute or two) analysis finishes -
+  // "done"/"failed" after. Lets the admin panel show real status instead of a defaultOffsetMs of
+  // 0 being ambiguous with "analyzed and genuinely no correction needed."
+  syncAnalysisStatus String            @default("pending") @db.VarChar(20)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -339,6 +462,30 @@ model Subtitle {
   @@index([showProviderId])
   @@index([language])
   @@index([isDefault])
+}
+
+// One row per movie/episode, upserted (not appended) each time the app's own audio-sync feature
+// confidently detects a real timing mismatch on a device (see VideoPlayer.tsx's onAutoSync) -
+// "أعمال ترجمتها غير متطابقة" (works whose subtitle doesn't match), surfaced in the admin panel's
+// own dedicated tab so an admin can fix the underlying subtitle once (upload/hash-match) instead
+// of every viewer silently working around it locally. `resolved` is cleared back to false on any
+// new report even after being marked resolved once - a repeat complaint after a fix means the fix
+// didn't actually hold (or was for a different release), not that it's safe to ignore again.
+model SyncIssue {
+  id              String   @id @default(uuid())
+  movieId         String?  @unique
+  episodeId       String?  @unique
+  offsetMs        Int
+  speed           Float    @default(1)
+  reportCount     Int      @default(1)
+  firstReportedAt DateTime @default(now())
+  lastReportedAt  DateTime @updatedAt
+  resolved        Boolean  @default(false)
+
+  movie           Movie?   @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  episode         Episode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([resolved])
 }
 
 model Genre {
@@ -376,8 +523,22 @@ model Person {
   birthday      DateTime?
   deathday      DateTime?
   biography     String?              @db.Text
+  // Gemini-translated from `biography` - TMDB itself rarely has an Arabic translation for a
+  // person's biography specifically (unlike a movie's own title/overview, which usually does).
+  biographyAr   String?              @db.Text
+  // TMDB's own free-text field (e.g. "Los Angeles, California, USA") - not normalized to a
+  // Country row like Movie/TVShow's own production countries, since a person's birthplace is
+  // display-only here and TMDB doesn't return it in a structured form worth splitting up.
+  placeOfBirth  String?              @db.VarChar(500)
   photo         String?              @db.VarChar(1000)
   popularity    Decimal?             @db.Decimal(10, 2)
+  // How many times prisma/backfill-person-details.mjs has checked this row and found nothing on
+  // TMDB (see that script's own comment) - most of these never actually gain a detail later, so
+  // retrying forever just burns that script's run budget on rows that will realistically never
+  // change. Capped at MAX_ATTEMPTS there instead of retried indefinitely; untouched once a real
+  // fetch succeeds, since the row stops matching that script's own "all three still null" filter
+  // at that point regardless of this count.
+  detailFetchAttempts Int            @default(0)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
@@ -486,6 +647,79 @@ model SyncJob {
   @@index([providerId])
   @@index([status])
   @@index([createdAt])
+}
+
+// One row per distinct (source, kind, nb) ever seen while paging cee.buzz's or
+// cinemana.shabakaty.com's own AdvancedSearch?videoTitle=&page=N catalog browse (an empty
+// videoTitle returns every title on that source, not a search result - see ScheduledImportService).
+// Discovery (cheap, paged metadata only) and enrichment (TMDB match + import + stream/subtitle
+// attach, quota-limited) are two separate steps precisely so this table can hold "known about but
+// not yet processed" state - that split is what makes backlog catch-up and steady-state "just new
+// releases" the same code path with no explicit mode flag (see ScheduledImportService's own comment).
+model SourceCatalogItem {
+  id             String                 @id @default(uuid())
+  source         SourceSiteEnum
+  kind           SourceKindEnum
+  nb             String                 @db.VarChar(50)
+  enTitle        String?                @db.VarChar(500)
+  arTitle        String?                @db.VarChar(500)
+  year           Int?
+  // Extracted from the listing's imdbUrlRef via the same regex CinemanaTVRN's extractImdbId
+  // uses - null when the source item has no imdbUrlRef at all, which is when the fuzzy
+  // title-similarity fallback runs instead of the exact TMDB find-by-imdb lookup.
+  imdbId         String?                @db.VarChar(20)
+  status         SourceMatchStatusEnum  @default(PENDING)
+  matchMethod    String?                @db.VarChar(10)
+  matchScore     Int?
+  matchedMovieId String?
+  matchedShowId  String?
+  attempts       Int                    @default(0)
+  lastAttemptAt  DateTime?
+  // Null while PENDING/MATCHED/SKIPPED; set only on UNMATCHED, to lastAttemptAt plus the
+  // configured retry window - re-checked by every enrichment pass's UNMATCHED query so a title
+  // with no TMDB match today isn't skipped forever, just deferred.
+  nextRetryAt    DateTime?
+  discoveredAt   DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  matchedMovie   Movie?                 @relation(fields: [matchedMovieId], references: [id], onDelete: SetNull)
+  matchedShow    TVShow?                @relation(fields: [matchedShowId], references: [id], onDelete: SetNull)
+
+  @@unique([source, kind, nb])
+  @@index([status, nextRetryAt])
+  @@index([imdbId])
+  @@index([matchedMovieId])
+  @@index([matchedShowId])
+}
+
+// One row per (source, kind) - 4 total (cee-movie, cee-series, cinemana-movie, cinemana-series).
+// nextPage is the next AdvancedSearch page to request; caughtUp flips true the first time a page
+// comes back empty, and the sweep keeps re-requesting exactly that same page on every future run
+// (one cheap request) until the source catalog grows again and it stops being empty.
+model SourceCatalogCursor {
+  id          String         @id @default(uuid())
+  source      SourceSiteEnum
+  kind        SourceKindEnum
+  nextPage    Int            @default(1)
+  caughtUp    Boolean        @default(false)
+  lastSweptAt DateTime?
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([source, kind])
+}
+
+// Progress bookkeeping for ScheduledImportService's TMDB-first popularity import (independent of
+// CEE/Cinemana entirely - see its own comment). One row per (kind, language bucket): nextPage is
+// the next TMDB /discover page (popularity-sorted) to consume; wraps back to 1 once TMDB's own
+// 500-page cap or an empty page is hit, so a later run re-scans and picks up anything newly popular.
+model TmdbDiscoveryCursor {
+  id        String         @id @default(uuid())
+  kind      SourceKindEnum
+  bucket    String         @db.VarChar(20)
+  nextPage  Int            @default(1)
+  updatedAt DateTime       @updatedAt
+
+  @@unique([kind, bucket])
 }
 
 model User {
@@ -742,3 +976,57 @@ model TVShowCrewMember {
   @@index([role])
 }
 
+
+// The home screen's rows, fully admin-managed: order, visibility, titles, and what fills each one.
+// RECENT/POPULAR/TOP_RATED/SERIES are computed live from the catalog (same lists the app always
+// built itself); CUSTOM rows hold an explicit, ordered item list - hand-picked, or imported from a
+// TMDB list/preset/discover query (see HomeSectionsAdminService). No rows at all = the app falls
+// back to those four defaults.
+enum HomeSectionKindEnum {
+  RECENT
+  POPULAR
+  TOP_RATED
+  SERIES
+  CUSTOM
+  // A rule-driven row: "newest / top-rated / most-popular movies (or shows) in language X" - computed live
+  // from the catalog on every request, so it always reflects what is actually there (see HomeSection.rule).
+  RULE
+}
+
+model HomeSection {
+  id           String              @id @default(uuid())
+  kind         HomeSectionKindEnum @default(CUSTOM)
+  titleAr      String              @db.VarChar(200)
+  titleEn      String              @db.VarChar(200)
+  sortOrder    Int                 @default(0)
+  isVisible    Boolean             @default(true)
+  maxItems     Int                 @default(20)
+  // Only for kind RULE: { media: "movie"|"series"|"all", sort: "newest"|"rating"|"popularity", language?, genre?, minVotes? }
+  rule         Json?
+  // Import bookkeeping for CUSTOM rows filled from TMDB (importStatus: IMPORTING | DONE | FAILED).
+  importSource String?             @db.VarChar(500)
+  importStatus String?             @db.VarChar(20)
+  importTotal  Int                 @default(0)
+  importDone   Int                 @default(0)
+  importError  String?             @db.VarChar(1000)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  items        HomeSectionItem[]
+
+  @@index([sortOrder])
+}
+
+model HomeSectionItem {
+  id        String      @id @default(uuid())
+  sectionId String
+  movieId   String?
+  showId    String?
+  position  Int
+
+  section   HomeSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  movie     Movie?      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  show      TVShow?     @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId, position])
+}

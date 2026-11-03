@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { authService } from '../services/authService';
-import { setUnauthorizedHandler } from '../services/apiClient';
+import { setUnauthorizedHandler } from '../lib/apiClient';
 import { tokenStorage } from '../lib/tokenStorage';
-import type { UserResponseDto } from '../services/types';
+import type { UserResponseDto } from '../lib/types';
 
 export interface AuthContextValue {
   readonly user: UserResponseDto | undefined;
@@ -13,7 +13,6 @@ export interface AuthContextValue {
   readonly logout: () => Promise<void>;
 }
 
-/** Exported so tests can supply a fake value without needing a real router/AuthProvider. */
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const PUBLIC_ROUTES = new Set(['/login']);
@@ -67,10 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user && isPublic) {
       void router.replace('/');
     }
+    // Every admin route requires the ADMIN role specifically - a logged-in EDITOR/VIEWER
+    // account (both real roles the backend supports) would otherwise land on a dashboard that
+    // 403s on every single request instead of a clear "this panel isn't for you" message.
+    if (user && user.role !== 'ADMIN' && !isPublic) {
+      void router.replace('/login?forbidden=1');
+    }
   }, [isLoading, user, router]);
 
   const login = async (email: string, password: string) => {
     const session = await authService.login({ email, password });
+    if (session.user.role !== 'ADMIN') {
+      throw new Error('هذا الحساب لا يملك صلاحية الوصول إلى لوحة التحكم.');
+    }
     tokenStorage.setTokens(session.accessToken, session.refreshToken);
     setUser(session.user);
   };
@@ -93,9 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 }

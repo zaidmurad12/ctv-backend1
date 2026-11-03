@@ -1,0 +1,105 @@
+name: Catalog jobs
+
+run-name: "${{ github.event.inputs.job == 'episodes' && 'تحديث الحلقات والمواسم' || github.event.inputs.job == 'old-titles' && 'استيراد الأعمال القديمة' || 'استيراد الأعمال الحديثة' }}"
+
+# Runs on GitHub's free runners against the Neon database. Sized for the free tiers:
+#  - GitHub Actions: this repository is private, which gives 2,000 free minutes a month. The daily
+#    run is about 15 minutes (30 days = ~450 minutes); manual runs add at most ~40 minutes each.
+#  - Neon: the free project is capped at 1 GB and writes stop at the cap, so every run first checks
+#    the database size and skips all imports once it passes MAX_DB_MB.
+#  - Every step has its own time budget, and the whole job is cut off after 50 minutes.
+# Automatic (daily): newest releases only. Manual (admin panel "مهام الاستيراد" or the Actions tab):
+# episodes refresh, old/popular titles, or newest releases.
+# Secrets needed (Settings > Secrets and variables > Actions): DATABASE_URL, TMDB_API_KEY, GEMINI_API_KEY
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "newest | episodes | old-titles"
+        required: true
+        default: newest
+        type: choice
+        options:
+          - newest
+          - episodes
+          - old-titles
+
+concurrency:
+  group: catalog-jobs
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      JOB: ${{ github.event.inputs.job || 'newest' }}
+      MAX_DB_MB: "920"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      NODE_ENV: production
+      JWT_SECRET: actions-job-not-used-0123456789abcdef0123456789
+      JWT_REFRESH_SECRET: actions-job-not-used-fedcba9876543210fedcba9876543210
+      PROVIDER_CINEMANA_ENABLED: "false"
+      PROVIDER_CONSUMET_ENABLED: "false"
+      # Episodes: new episodes, then missing posters/names/descriptions/durations of recent ones.
+      CATALOG_REFRESH_BUDGET_MIN: "20"
+      CATALOG_MISSING_METADATA_BUDGET_MIN: "12"
+      # Newest releases: a few per language bucket, one page - small and steady so 1 GB lasts.
+      SCHEDULED_IMPORT_NEWEST_PER_BUCKET: "5"
+      SCHEDULED_IMPORT_NEWEST_PAGES: "1"
+      SCHEDULED_IMPORT_NEWEST_TIME_BUDGET_MIN: "10"
+      # Old/popular titles: a modest batch per manual run.
+      SCHEDULED_IMPORT_DAILY_QUOTA: "40"
+      SCHEDULED_IMPORT_TIME_BUDGET_MIN: "25"
+      SCHEDULED_IMPORT_CONCURRENCY: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: neon-postgres
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --filter "@ctv-platform/backend..." --filter "."
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Database size guard
+        id: guard
+        run: |
+          size=$(node prisma/db-size.mjs | tail -1)
+          echo "Database size: ${size} MB (limit ${MAX_DB_MB} MB, Neon free cap 1024 MB)"
+          if [ "$size" -ge "$MAX_DB_MB" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Database is ${size} MB, at/above ${MAX_DB_MB} MB - skipping imports to stay inside the free storage cap."
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Episodes - new ones and missing details
+        if: steps.guard.outputs.full == 'false' && env.JOB == 'episodes'
+        run: node prisma/reimport-published-shows.mjs
+
+      - name: Build backend
+        if: steps.guard.outputs.full == 'false' && env.JOB != 'episodes'
+        run: pnpm --filter "@ctv-platform/backend..." run build
+
+      - name: Newest releases
+        if: steps.guard.outputs.full == 'false' && env.JOB == 'newest'
+        run: node apps/backend/dist/cli/runJob.js newest-import
+
+      - name: Old and popular titles
+        if: steps.guard.outputs.full == 'false' && env.JOB == 'old-titles'
+        run: node apps/backend/dist/cli/runJob.js old-titles

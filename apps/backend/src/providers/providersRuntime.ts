@@ -3,6 +3,7 @@ import { ConsoleLogger } from '@ctv-platform/infrastructure';
 import { DiscoveryEngine, InMemoryDiscoveryCheckpointStore } from '@ctv-platform/importer';
 import { ProviderLifecycleManager, ProviderRegistry } from '@ctv-platform/sdk';
 import { ConsumetProviderFactory, readConsumetEnv } from '@ctv-platform/provider-consumet';
+import { CinemanaProviderFactory, readCinemanaEnv } from '@ctv-platform/provider-cinemana';
 
 /**
  * The shared, process-lifetime `ProviderRegistry` for this app. Concrete
@@ -26,6 +27,11 @@ export class ProvidersRuntime {
     const consumetEnv = readConsumetEnv();
     if (consumetEnv.enabled) {
       this.registry.registerFactory(new ConsumetProviderFactory(consumetEnv));
+    }
+
+    const cinemanaEnv = readCinemanaEnv();
+    if (cinemanaEnv.enabled) {
+      this.registry.registerFactory(new CinemanaProviderFactory(cinemanaEnv));
     }
   }
 }

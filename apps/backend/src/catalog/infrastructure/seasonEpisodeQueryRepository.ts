@@ -30,6 +30,7 @@ export class SeasonQueryRepository {
       overview: row.overview,
       episodeCount: row.episodeCount,
       poster: row.poster,
+      airDate: row.airDate ? row.airDate.toISOString() : null,
       episodes,
     };
   }
@@ -37,15 +38,20 @@ export class SeasonQueryRepository {
   async listEpisodes(seasonId: string): Promise<EpisodeSummaryDto[]> {
     const rows = await this.prisma.episode.findMany({
       where: { seasonId },
+      include: { providers: { include: { streams: true } } },
       orderBy: { episodeNumber: 'asc' },
     });
     return rows.map((row) => ({
       id: row.id,
       episodeNumber: row.episodeNumber,
       title: row.title,
+      titleAr: row.titleAr,
       overview: row.overview,
+      overviewAr: row.overviewAr,
       runtime: row.runtime,
       stillImage: row.stillImage,
+      airDate: row.airDate ? row.airDate.toISOString() : null,
+      hasPlayableStream: row.providers.some((p) => p.streams.some((s) => s.isActive)),
     }));
   }
 }
@@ -68,9 +74,12 @@ export class EpisodeQueryRepository {
       id: row.id,
       episodeNumber: row.episodeNumber,
       title: row.title,
+      titleAr: row.titleAr,
       overview: row.overview,
+      overviewAr: row.overviewAr,
       runtime: row.runtime,
       stillImage: row.stillImage,
+      hasPlayableStream: streams.length > 0,
       streams,
       subtitles,
     };
@@ -100,6 +109,8 @@ export class EpisodeQueryRepository {
       format: row.format,
       url: row.url,
       isDefault: row.isDefault,
+      defaultOffsetMs: row.defaultOffsetMs,
+      defaultSpeed: row.defaultSpeed,
     }));
   }
 

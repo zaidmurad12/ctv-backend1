@@ -1,8 +1,9 @@
 # Builds apps/backend (NestJS) out of the pnpm workspace. The lockfile tracks every workspace
 # member (apps/admin, apps/android-tv, apps/backend, apps/web, packages/domain,
-# packages/infrastructure, packages/provider-consumet, packages/sdk, services/importer) — pnpm's
-# --frozen-lockfile install fails if any of those manifests are missing from the build context,
-# even ones backend doesn't touch (e.g. apps/admin), so every package.json below is required.
+# packages/infrastructure, packages/provider-cinemana, packages/provider-consumet, packages/sdk,
+# services/importer) — pnpm's --frozen-lockfile install fails if any of those manifests are
+# missing from the build context, even ones backend doesn't touch (e.g. apps/admin), so every
+# package.json below is required.
 FROM node:20-slim AS deps
 WORKDIR /repo
 
@@ -24,6 +25,7 @@ COPY apps/backend/package.json apps/backend/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/domain/package.json packages/domain/package.json
 COPY packages/infrastructure/package.json packages/infrastructure/package.json
+COPY packages/provider-cinemana/package.json packages/provider-cinemana/package.json
 COPY packages/provider-consumet/package.json packages/provider-consumet/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY services/importer/package.json services/importer/package.json
@@ -36,6 +38,7 @@ WORKDIR /repo
 COPY prisma ./prisma
 COPY packages/domain packages/domain
 COPY packages/infrastructure packages/infrastructure
+COPY packages/provider-cinemana packages/provider-cinemana
 COPY packages/provider-consumet packages/provider-consumet
 COPY packages/sdk packages/sdk
 COPY services/importer services/importer
@@ -56,7 +59,10 @@ FROM node:20-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# ffmpeg is what the server-side subtitle-sync analysis (audioSyncAnalysisService.ts) decodes a
+# short audio window with - a plain child_process spawn of the CLI, not an npm ffmpeg binding, so
+# it only needs to exist on PATH in this runtime image.
+RUN apt-get update -y && apt-get install -y openssl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /repo ./
 

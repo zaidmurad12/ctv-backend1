@@ -296,5 +296,9 @@ function toSubtitleDto(
     format: subtitle.format,
     url: subtitle.downloadUrl,
     isDefault: subtitle.isDefault,
+    // Third-party provider subtitles never go through the admin-managed import/upload paths
+    // audioSyncAnalysisService.ts hooks into, so there's no analysis result to report here.
+    defaultOffsetMs: 0,
+    defaultSpeed: 1,
   };
 }

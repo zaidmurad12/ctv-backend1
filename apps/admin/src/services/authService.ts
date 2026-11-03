@@ -1,5 +1,5 @@
-import { apiRequest } from './apiClient';
-import type { AuthResponseDto, UserResponseDto } from './types';
+import { apiRequest } from '../lib/apiClient';
+import type { AuthResponseDto, UserResponseDto } from '../lib/types';
 
 export interface LoginPayload {
   readonly email: string;

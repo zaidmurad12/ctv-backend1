@@ -6,8 +6,10 @@ import type { CatalogListQueryDto } from './dto.js';
 import type {
   EpisodeDetailDto,
   EpisodeSummaryDto,
+  FeaturedItemDto,
   MovieDetailDto,
   MovieSummaryDto,
+  PersonDetailDto,
   SeasonDetailDto,
   SeasonSummaryDto,
   ShowDetailDto,
@@ -20,6 +22,7 @@ import {
   SeasonQueryRepository,
 } from './infrastructure/seasonEpisodeQueryRepository.js';
 import { MovieQueryRepository } from './infrastructure/movieQueryRepository.js';
+import { PersonQueryRepository } from './infrastructure/personQueryRepository.js';
 import { ShowQueryRepository } from './infrastructure/showQueryRepository.js';
 
 export interface Page<T> {
@@ -35,6 +38,7 @@ function toPage<T>(items: T[], total: number, query: CatalogListQueryDto): Page<
 export class MoviesUseCases {
   constructor(
     private readonly movies: MovieQueryRepository,
+    private readonly shows: ShowQueryRepository,
     private readonly streamResolver: ProviderStreamResolver,
   ) {}
 
@@ -59,6 +63,33 @@ export class MoviesUseCases {
 
   async recommended(userId: string, limit: number): Promise<MovieSummaryDto[]> {
     return this.movies.recommended(userId, limit);
+  }
+
+  async byCollection(collectionId: string, excludeId?: string): Promise<MovieSummaryDto[]> {
+    return this.movies.byCollection(collectionId, excludeId);
+  }
+
+  /** Admin-curated home hero carousel - can mix movies and shows in one interleaved order (see FeaturedItemDto). */
+  async featured(): Promise<FeaturedItemDto[]> {
+    const [movies, shows] = await Promise.all([this.movies.featured(), this.shows.featured()]);
+    return [
+      ...movies.map(({ featuredOrder, ...movie }) => ({
+        movie,
+        featuredOrder,
+        type: 'movie' as const,
+      })),
+      ...shows.map(({ featuredOrder, ...show }) => ({
+        show,
+        featuredOrder,
+        type: 'show' as const,
+      })),
+    ]
+      .sort((a, b) => a.featuredOrder - b.featuredOrder)
+      .map((entry) =>
+        entry.type === 'movie'
+          ? { ...entry.movie, type: 'movie' as const }
+          : { ...entry.show, type: 'show' as const },
+      );
   }
 
   async getById(id: string): Promise<MovieDetailDto> {
@@ -198,5 +229,18 @@ export class EpisodesUseCases {
       return [];
     }
     return this.streamResolver.resolveEpisodeSubtitles({ id, ...context });
+  }
+}
+
+@Injectable()
+export class PeopleUseCases {
+  constructor(private readonly people: PersonQueryRepository) {}
+
+  async getById(id: string): Promise<PersonDetailDto> {
+    const person = await this.people.findById(id);
+    if (!person) {
+      throw new NotFoundError('Person', id);
+    }
+    return person;
   }
 }

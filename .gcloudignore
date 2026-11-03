@@ -3,6 +3,8 @@
 # file intentionally does NOT reference .gitignore, so the lockfile (and anything else
 # git-ignored but build-relevant) actually reaches the Cloud Build upload.
 .git
+.env
+**/.env
 .gradle
 .kotlin
 .idea
@@ -17,3 +19,6 @@ apps/android-tv/build
 **/.next
 **/*.tsbuildinfo
 *.apk
+# The one exception: the release build the in-app update check serves (see
+# apps/backend/src/app-update/appVersion.ts and apps/backend/release-assets/README.md).
+!apps/backend/release-assets/*.apk
