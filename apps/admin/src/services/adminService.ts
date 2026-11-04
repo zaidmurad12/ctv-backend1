@@ -46,18 +46,15 @@ export interface PagedResult<T> {
 export type JobName = 'newest' | 'episodes';
 
 export interface JobsOverview {
-  configured: boolean;
   database: { sizeMb: number | null; limitMb: number };
-  runs: Array<{
-    id: number;
-    title: string;
-    status: string;
-    conclusion: string | null;
+  current: {
+    job: JobName;
+    running: boolean;
+    ok: boolean | null;
     startedAt: string;
-    updatedAt: string;
-    url: string;
-    trigger: 'schedule' | 'manual';
-  }>;
+    finishedAt: string | null;
+    lines: string[];
+  } | null;
 }
 
 export interface TvSyncLog {

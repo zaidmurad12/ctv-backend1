@@ -180,16 +180,16 @@ export class ScheduledImportService {
   // language bucket, and imports whatever isn't in the catalog yet. Already-imported titles are
   // skipped, so frequent runs are cheap and only ever add genuinely new arrivals. Shares the
   // `running` guard, so it never overlaps a full run().
-  async runNewestOnly(): Promise<void> {
+  async runNewestOnly(budgetMs: number = NEWEST_TIME_BUDGET_MS): Promise<number> {
     if (this.running) {
       this.logger.warn(
         'Previous scheduled import run is still in progress, skipping newest-releases trigger.',
       );
-      return;
+      return 0;
     }
     this.running = true;
     try {
-      const deadline = Date.now() + NEWEST_TIME_BUDGET_MS;
+      const deadline = Date.now() + budgetMs;
       const to = new Date().toISOString().slice(0, 10);
       const from = new Date(Date.now() - NEWEST_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10);
       let total = 0;
@@ -202,6 +202,7 @@ export class ScheduledImportService {
       this.logger.log(
         `Newest-releases import finished: ${total} new titles (released ${from}..${to}).`,
       );
+      return total;
     } finally {
       this.running = false;
     }

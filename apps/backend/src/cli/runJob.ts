@@ -10,7 +10,9 @@ import { ScheduledImportService } from '../admin/infrastructure/scheduledImportS
 // purpose: CEE and Cinemana refuse connections from servers outside Iraq, and those two passes read
 // a refused connection as "link is dead" and unpublish working titles.
 const jobs: Record<string, (service: ScheduledImportService) => Promise<void>> = {
-  'newest-import': (service) => service.runNewestOnly(),
+  'newest-import': async (service) => {
+    await service.runNewestOnly();
+  },
 };
 
 async function main(): Promise<void> {
