@@ -88,6 +88,9 @@ export class JobsAdminService {
     const sizeMb = await this.databaseSizeMb();
     const state = this.current;
     return {
+      // `configured` and `runs` are only for older copies of the admin panel, which still read them.
+      configured: true,
+      runs: [] as never[],
       database: { sizeMb, limitMb: this.dbLimitMb },
       current: state && {
         job: state.job,
