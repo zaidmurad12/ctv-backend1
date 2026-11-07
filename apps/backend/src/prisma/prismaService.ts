@@ -45,6 +45,25 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
        where t."sourceMatchedAt" < '2026-11-07T10:50:00Z'
          and exists (select 1 from "Season" s where s."showId" = t.id and s."updatedAt" >= t."sourceMatchedAt" - interval '10 minutes')`,
     );
+    // Same for what a TV report re-marked (the TVs re-sent the same titles daily until v218, each time
+    // updating them) and for series whose episodes the metadata pass rewrote.
+    for (const [table, column] of [
+      ['Movie', 'matchedMovieId'],
+      ['TVShow', 'matchedShowId'],
+    ]) {
+      await this.client.$executeRawUnsafe(
+        `update "${table}" t set "sourceMatchedAt" = null
+         where t."sourceMatchedAt" < '2026-11-07T10:50:00Z'
+           and exists (select 1 from "SourceCatalogItem" c where c."${column}" = t.id and c."matchMethod" like 'tv-%'
+                       and c."lastAttemptAt" between t."sourceMatchedAt" - interval '10 minutes' and t."sourceMatchedAt" + interval '10 minutes')`,
+      );
+    }
+    await this.client.$executeRawUnsafe(
+      `update "TVShow" t set "sourceMatchedAt" = null
+       where t."sourceMatchedAt" < '2026-11-07T10:50:00Z'
+         and exists (select 1 from "Season" s join "Episode" e on e."seasonId" = s.id
+                     where s."showId" = t.id and e."updatedAt" >= t."sourceMatchedAt" - interval '10 minutes')`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {

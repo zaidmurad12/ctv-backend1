@@ -105,10 +105,10 @@ export class HomeSectionsUseCases {
     return { items: raw.slice(0, limit), hasMore: raw.length > limit };
   }
 
-  // The titles the sources added most recently: what the TVs reported from the sources' own "newly
-  // added" lists and the server linked to (or imported into) the catalog, by when it was first
-  // reported; titles turned compatible any other way (the source-check page - the only route for
-  // CEE, whose newly added list the TVs don't read), by when that happened - plus compatible series whose newest season (2 or later) premiered in the last
+  // The titles the sources added most recently, by sourceMatchedAt: when compatibility was turned on
+  // (the source-check page - the only route for CEE, whose newly added list the TVs don't read) or a
+  // TV's report of a source's newly added list made the server import the title. An old title a TV
+  // reports again (usually for a new episode) isn't dated, so it doesn't jump ahead - plus compatible series whose newest season (2 or later) premiered in the last
   // NEW_SEASON_DAYS, by that premiere. The sources list a series under one number for all its
   // seasons, so a series reappearing there can't tell a new season from a new episode; the season's
   // own premiere can, and a new episode of a running season never moves the series. All of these
@@ -122,21 +122,7 @@ export class HomeSectionsUseCases {
     const now = new Date();
     const releasedAfter = new Date(now.getTime() - RECENT_RELEASE_DAYS * 86_400_000);
     const recent = { releaseDate: { gte: releasedAfter } };
-    const [reported, seasons, matchedMovies, matchedShows] = await Promise.all([
-      client.sourceCatalogItem.findMany({
-        where: {
-          status: 'MATCHED',
-          matchMethod: { startsWith: 'tv-' },
-          ...(media === 'movie'
-            ? { matchedMovie: recent }
-            : media === 'series'
-              ? { matchedShow: recent }
-              : { OR: [{ matchedMovie: recent }, { matchedShow: recent }] }),
-        },
-        orderBy: { discoveredAt: 'desc' },
-        take,
-        select: { matchedMovieId: true, matchedShowId: true, discoveredAt: true },
-      }),
+    const [seasons, matchedMovies, matchedShows] = await Promise.all([
       media === 'movie'
         ? []
         : client.season.findMany({
@@ -182,7 +168,6 @@ export class HomeSectionsUseCases {
       const time = at?.getTime() ?? 0;
       if ((latest.get(key)?.at ?? -1) < time) latest.set(key, { movieId, showId, at: time });
     };
-    for (const row of reported) add(row.matchedMovieId, row.matchedShowId, row.discoveredAt);
     for (const row of seasons) add(null, row.showId, row.airDate);
     for (const row of matchedMovies) add(row.id, null, row.sourceMatchedAt);
     for (const row of matchedShows) add(null, row.id, row.sourceMatchedAt);

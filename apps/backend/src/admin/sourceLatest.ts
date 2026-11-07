@@ -157,7 +157,7 @@ export class SourceLatestService {
       try {
         const found = await this.findExisting(kind, item);
         if (found) {
-          await this.markCompatible(kind, found.id);
+          await this.markCompatible(kind, found.id, false);
           await this.record(item, kind, 'MATCHED', found.method, found.id);
           matched++;
           done.add(item.nb);
@@ -188,7 +188,7 @@ export class SourceLatestService {
           kind === 'movie'
             ? await this.importer.importMovie(tmdbId)
             : await this.importer.importShow(tmdbId);
-        await this.markCompatible(kind, id);
+        await this.markCompatible(kind, id, true);
         await this.record(item, kind, 'MATCHED', 'tv-import', id);
         imported++;
         done.add(item.nb);
@@ -341,23 +341,32 @@ export class SourceLatestService {
     return first?.id != null ? String(first.id) : null;
   }
 
-  private async markCompatible(kind: 'movie' | 'show', id: string): Promise<void> {
+  // `imported`: the title was just imported because of this report - the only case dated as newly
+  // added (sourceMatchedAt, for the "recently added" home row). A title already in the catalog that
+  // a source lists again is usually an old one with a new episode, so it isn't dated.
+  private async markCompatible(
+    kind: 'movie' | 'show',
+    id: string,
+    imported: boolean,
+  ): Promise<void> {
     const newlyCompatible = { id, OR: [{ hasSourceMatch: null }, { hasSourceMatch: false }] };
     if (kind === 'movie') {
-      await this.prisma.movie.updateMany({
-        where: newlyCompatible,
-        data: { sourceMatchedAt: new Date() },
-      });
+      if (imported)
+        await this.prisma.movie.updateMany({
+          where: newlyCompatible,
+          data: { sourceMatchedAt: new Date() },
+        });
       await this.prisma.movie.update({ where: { id }, data: { hasSourceMatch: true } });
       await this.prisma.movie.updateMany({
         where: { id, status: 'DRAFT' },
         data: { status: 'PUBLISHED' },
       });
     } else {
-      await this.prisma.tVShow.updateMany({
-        where: newlyCompatible,
-        data: { sourceMatchedAt: new Date() },
-      });
+      if (imported)
+        await this.prisma.tVShow.updateMany({
+          where: newlyCompatible,
+          data: { sourceMatchedAt: new Date() },
+        });
       await this.prisma.tVShow.update({ where: { id }, data: { hasSourceMatch: true } });
       await this.prisma.tVShow.updateMany({
         where: { id, status: 'DRAFT' },
