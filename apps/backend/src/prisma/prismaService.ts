@@ -37,6 +37,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         `update "${table}" set "sourceMatchedAt" = "updatedAt" where "hasSourceMatch" = true and "updatedAt" > now() - interval '3 days'`,
       );
     }
+    // That first dating (2026-11-07) also caught every series the episode refresh had just rewritten -
+    // its seasons were updated within the same minutes, which a source-check mark never does. Those
+    // are undated again; nothing dated after that day is touched.
+    await this.client.$executeRawUnsafe(
+      `update "TVShow" t set "sourceMatchedAt" = null
+       where t."sourceMatchedAt" < '2026-11-07T10:50:00Z'
+         and exists (select 1 from "Season" s where s."showId" = t.id and s."updatedAt" >= t."sourceMatchedAt" - interval '10 minutes')`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
