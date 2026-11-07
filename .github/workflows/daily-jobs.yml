@@ -1,15 +1,17 @@
 name: Catalog jobs
 
-run-name: "${{ github.event.inputs.job == 'episodes' && 'تحديث الحلقات والمواسم' || 'استيراد الأعمال الحديثة' }}"
+run-name: "${{ github.event_name == 'schedule' && 'المهام اليومية' || (github.event.inputs.job == 'episodes' && 'تحديث الحلقات والمواسم' || 'استيراد الأعمال الحديثة') }}"
 
 # Runs on GitHub's free runners against the Neon database. Sized for the free tiers:
-#  - GitHub Actions: this repository is private, which gives 2,000 free minutes a month. The daily
-#    run is about 15 minutes (30 days = ~450 minutes); manual runs add at most ~40 minutes each.
+#  - GitHub Actions: free (unlimited minutes) while this repository is public; if it is made private
+#    the free allowance is 2,000 minutes a month, and the daily run (at most ~45 minutes, usually far
+#    less) would need trimming to fit.
+#  - Neon compute: ~30-45 minutes of database work a day, well inside the free monthly compute.
 #  - Neon: the free project is capped at 1 GB and writes stop at the cap, so every run first checks
 #    the database size and skips all imports once it passes MAX_DB_MB.
 #  - Every step has its own time budget, and the whole job is cut off after 50 minutes.
-# Automatic (daily): newest releases only. Manual (admin panel "مهام الاستيراد" or the Actions tab):
-# episodes refresh, old/popular titles, or newest releases.
+# Automatic (daily): episodes refresh (recent/airing series, plus a monthly slice of older ones - see
+# prisma/reimport-published-shows.mjs), then newest releases. Manual (the Actions tab): either one.
 # Secrets needed (Settings > Secrets and variables > Actions): DATABASE_URL, TMDB_API_KEY, GEMINI_API_KEY
 on:
   schedule:
@@ -32,9 +34,9 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     env:
-      JOB: ${{ github.event.inputs.job || 'newest' }}
+      JOB: ${{ github.event.inputs.job || 'all' }}
       MAX_DB_MB: "920"
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
@@ -84,17 +86,19 @@ jobs:
           fi
 
       - name: Episodes - new ones and missing details
-        if: steps.guard.outputs.full == 'false' && env.JOB == 'episodes'
+        if: steps.guard.outputs.full == 'false' && (env.JOB == 'episodes' || env.JOB == 'all')
+        # A failure here must not stop the newest-releases step below.
+        continue-on-error: true
         env:
           NODE_ENV: production
         run: node prisma/reimport-published-shows.mjs
 
       - name: Build backend
-        if: steps.guard.outputs.full == 'false' && env.JOB != 'episodes'
+        if: steps.guard.outputs.full == 'false' && (env.JOB == 'newest' || env.JOB == 'all')
         run: pnpm --filter "@ctv-platform/backend..." run build
 
       - name: Newest releases
-        if: steps.guard.outputs.full == 'false' && env.JOB == 'newest'
+        if: steps.guard.outputs.full == 'false' && (env.JOB == 'newest' || env.JOB == 'all')
         env:
           NODE_ENV: production
         run: node apps/backend/dist/cli/runJob.js newest-import
