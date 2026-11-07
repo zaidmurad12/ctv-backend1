@@ -61,6 +61,7 @@ export class LatestSourceBody {
 const IMPORTS_PER_DAY = 40;
 const IMPORTS_PER_CALL = 8;
 const CALL_BUDGET_MS = 200_000;
+const RETRY_UNMATCHED_MS = 3 * 24 * 3600_000;
 
 function imdbOf(ref?: string): string | null {
   const m = /(tt\d{6,10})/i.exec(ref ?? '');
@@ -96,9 +97,36 @@ export class SourceLatestService {
     this.prisma = prismaService.client;
   }
 
+  // Titles already handled in an earlier call (any TV, any day, even after the free host slept and
+  // forgot its memory): linked to a catalog title, or looked up without success in the last 3 days.
+  private async alreadyHandled(items: LatestSourceItem[]): Promise<Set<string>> {
+    const nbs = items.map((i) => i.nb).filter((nb) => /^\d+$/.test(nb));
+    const done = new Set<string>();
+    if (!nbs.length) return done;
+    const retryAfter = new Date(Date.now() - RETRY_UNMATCHED_MS);
+    const rows = await this.prisma.sourceCatalogItem.findMany({
+      where: { source: 'CINEMANA', nb: { in: nbs } },
+      select: { kind: true, nb: true, status: true, matchMethod: true, lastAttemptAt: true },
+    });
+    for (const row of rows) {
+      const recentMiss =
+        row.status === 'UNMATCHED' &&
+        !!row.matchMethod?.startsWith('tv-') &&
+        (row.matchMethod === 'tv-noref' ||
+          (row.lastAttemptAt != null && row.lastAttemptAt > retryAfter));
+      if (row.status === 'MATCHED' || recentMiss) {
+        done.add(`${row.kind === 'SERIES' ? 'series' : 'movie'}:${row.nb}`);
+      }
+    }
+    return done;
+  }
+
+  // `done` lists the source numbers that need no further sending (handled now or earlier); the TV
+  // remembers them and sends only the rest next time. Titles left out because of the per-call or
+  // per-day import caps are not in it, so they are sent again later.
   async ingest(
     body: LatestSourceBody,
-  ): Promise<{ matched: number; imported: number; skipped: number }> {
+  ): Promise<{ matched: number; imported: number; skipped: number; done: string[] }> {
     const started = Date.now();
     const now = Date.now();
     for (const [nb, at] of this.seen) if (now - at > 24 * 3600_000) this.seen.delete(nb);
@@ -112,9 +140,16 @@ export class SourceLatestService {
     let imported = 0;
     let skipped = 0;
     let importsThisCall = 0;
+    const handled = await this.alreadyHandled(body.items);
+    const done = new Set<string>();
     for (const item of body.items) {
-      if (!/^\d+$/.test(item.nb) || this.seen.has(item.nb)) {
+      if (
+        !/^\d+$/.test(item.nb) ||
+        this.seen.has(item.nb) ||
+        handled.has(`${item.kind}:${item.nb}`)
+      ) {
         skipped++;
+        done.add(item.nb);
         continue;
       }
       if (Date.now() - started > CALL_BUDGET_MS) break;
@@ -125,6 +160,7 @@ export class SourceLatestService {
           await this.markCompatible(kind, found.id);
           await this.record(item, kind, 'MATCHED', found.method, found.id);
           matched++;
+          done.add(item.nb);
           this.seen.set(item.nb, now);
           continue;
         }
@@ -133,6 +169,7 @@ export class SourceLatestService {
           if (!imdb) {
             this.seen.set(item.nb, now);
             await this.record(item, kind, 'UNMATCHED', 'tv-noref', null);
+            done.add(item.nb);
           }
           skipped++;
           continue;
@@ -141,6 +178,7 @@ export class SourceLatestService {
         this.seen.set(item.nb, now);
         if (!tmdbId) {
           await this.record(item, kind, 'UNMATCHED', 'tv-notmdb', null);
+          done.add(item.nb);
           skipped++;
           continue;
         }
@@ -153,6 +191,7 @@ export class SourceLatestService {
         await this.markCompatible(kind, id);
         await this.record(item, kind, 'MATCHED', 'tv-import', id);
         imported++;
+        done.add(item.nb);
         this.logger.log(`imported ${kind} ${imdb} (source nb ${item.nb}) -> ${id}`);
       } catch (err) {
         skipped++;
@@ -161,7 +200,7 @@ export class SourceLatestService {
         );
       }
     }
-    return { matched, imported, skipped };
+    return { matched, imported, skipped, done: [...done] };
   }
 
   // IMDb id first (exact), otherwise the same title (English or Arabic) within a year.
