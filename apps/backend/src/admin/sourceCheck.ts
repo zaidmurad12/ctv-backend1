@@ -65,6 +65,14 @@ export class SourceCheckResultsBody {
   results!: SourceCheckResultItem[];
 }
 
+export class MarkRecentBody {
+  @IsIn(KINDS)
+  type!: (typeof KINDS)[number];
+
+  @IsString()
+  id!: string;
+}
+
 export interface SourceCheckCandidate {
   type: 'movie' | 'show';
   id: string;
@@ -169,6 +177,26 @@ export class SourceCheckService {
     };
   }
 
+  // The admin's "show in recently added" button: the title becomes compatible (and live, if a
+  // draft) and is dated now, which puts it at the front of the "recently added" home row.
+  async markRecent(body: MarkRecentBody): Promise<{ ok: true }> {
+    const data = { hasSourceMatch: true, sourceMatchedAt: new Date() };
+    if (body.type === 'movie') {
+      await this.prisma.movie.update({ where: { id: body.id }, data });
+      await this.prisma.movie.updateMany({
+        where: { id: body.id, status: 'DRAFT' },
+        data: { status: 'PUBLISHED' },
+      });
+    } else {
+      await this.prisma.tVShow.update({ where: { id: body.id }, data });
+      await this.prisma.tVShow.updateMany({
+        where: { id: body.id, status: 'DRAFT' },
+        data: { status: 'PUBLISHED' },
+      });
+    }
+    return { ok: true };
+  }
+
   // A found match always marks the title compatible. "Not found" only ever downgrades a title that
   // wasn't already marked compatible - a title someone confirmed by hand isn't undone by one failed
   // automatic search (a source timing out, a spelling the matcher missed).
@@ -253,5 +281,12 @@ export class SourceCheckController {
   @ApiOperation({ summary: 'Store source-compatibility results found by the admin panel' })
   results(@Body() body: SourceCheckResultsBody) {
     return this.service.saveResults(body);
+  }
+
+  @Post('mark-recent')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Mark a title compatible and put it first in the recently added row' })
+  markRecent(@Body() body: MarkRecentBody) {
+    return this.service.markRecent(body);
   }
 }

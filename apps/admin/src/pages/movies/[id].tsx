@@ -1,3 +1,4 @@
+import { MarkRecentButton } from '../../components/MarkRecentButton';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
@@ -329,6 +330,7 @@ export default function MovieDetailPage() {
                 <Eye size={12} />
                 معاينة من المصادر
               </button>
+              <MarkRecentButton type="movie" id={movie.id} />
               <button
                 type="button"
                 disabled={reimporting}
