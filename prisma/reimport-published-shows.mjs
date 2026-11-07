@@ -30,6 +30,13 @@ const MISSING_METADATA_RETRY_DAYS = Number(process.env.CATALOG_MISSING_METADATA_
 const MISSING_METADATA_BUDGET_MS = Number(process.env.CATALOG_MISSING_METADATA_BUDGET_MIN ?? 10) * 60 * 1000;
 const MISSING_METADATA_RECENT_DAYS = Number(process.env.CATALOG_MISSING_METADATA_RECENT_DAYS ?? 365);
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Which shows a run checks. "Active" ones every run: aired something in the last ACTIVE_SHOW_DAYS,
+// released in the last year, or not dated yet. The rest (finished or long-paused) only a few per run,
+// each about once a month - enough to notice a series coming back with a new season, without
+// re-reading thousands of complete old series every day.
+const ACTIVE_SHOW_DAYS = Number(process.env.CATALOG_ACTIVE_SHOW_DAYS ?? 120);
+const DORMANT_RECHECK_DAYS = Number(process.env.CATALOG_DORMANT_RECHECK_DAYS ?? 30);
+const DORMANT_PER_RUN = Number(process.env.CATALOG_DORMANT_PER_RUN ?? 40);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -154,12 +161,31 @@ async function refreshEpisodesOnly(show, imgBase, providerId) {
   // newly aired episode exists, so episode air dates are the import gate below. Complete old
   // seasons are skipped without an extra detail request; the current/latest one is always checked.
   const tmdbSeasons = (data.seasons ?? []).filter((s) => s.season_number >= 1);
+  // TMDB sometimes gives brand-new episodes one shared placeholder picture (or the previous
+  // episode's title) and replaces it days later. Those were imported as they were and then never
+  // looked at again, showing the last episode's picture repeated down the row. A season with a
+  // picture or a real title used twice is re-read below and the repeats replaced.
+  const ownEpisodes = show.seasonLayoutCustom
+    ? []
+    : await prisma.episode.findMany({
+        where: { season: { showId: show.id } },
+        select: { id: true, episodeNumber: true, title: true, stillImage: true, season: { select: { seasonNumber: true } } },
+      });
+  const repeats = repeatedEpisodes(ownEpisodes);
   const latest = Math.max(0, ...tmdbSeasons.map((s) => s.season_number));
   let created = 0;
+  let repaired = 0;
   let nextCustomSeasonNumber = Math.max(0, ...existing.map((s) => s.seasonNumber));
   for (const s of tmdbSeasons) {
     const own = byNumber.get(s.season_number);
-    if (!show.seasonLayoutCustom && own && own._count.episodes >= (s.episode_count ?? 0) && s.season_number !== latest) continue;
+    if (
+      !show.seasonLayoutCustom &&
+      own &&
+      own._count.episodes >= (s.episode_count ?? 0) &&
+      s.season_number !== latest &&
+      !repeats.seasons.has(s.season_number)
+    )
+      continue;
     const customDestination = show.seasonLayoutCustom ? customByCanonical.get(s.season_number) : undefined;
     const knownCanonicalEpisodes = customCanonicalEpisodes.get(s.season_number) ?? new Set();
     if (customDestination && s.season_number !== latest && knownCanonicalEpisodes.size >= (s.episode_count ?? 0)) continue;
@@ -196,6 +222,19 @@ async function refreshEpisodesOnly(show, imgBase, providerId) {
         epAr: arByNumber.get(ep.episode_number),
       }));
       created += await createMissingEpisodeBatch(season.id, missingRows, providerId, show.tmdbId, s.season_number, imgBase);
+      const tmdbByNumber = new Map((seasonData.episodes ?? []).map((ep) => [ep.episode_number, ep]));
+      for (const episode of ownEpisodes) {
+        if (episode.season.seasonNumber !== s.season_number || !repeats.ids.has(episode.id)) continue;
+        const fresh = tmdbByNumber.get(episode.episodeNumber);
+        if (!fresh) continue;
+        const data = {};
+        const still = img(imgBase, 'w300', fresh.still_path);
+        if (still && still !== episode.stillImage) data.stillImage = still;
+        if (fresh.name && fresh.name !== episode.title) data.title = fresh.name;
+        if (Object.keys(data).length === 0) continue;
+        await prisma.episode.update({ where: { id: episode.id }, data });
+        repaired++;
+      }
       continue;
     }
 
@@ -251,7 +290,35 @@ async function refreshEpisodesOnly(show, imgBase, providerId) {
       data: { ...showUpdate, numberOfSeasons: data.number_of_seasons ?? undefined, numberOfEpisodes: data.number_of_episodes ?? undefined },
     });
   }
+  if (repaired) console.log(`  ~ ${show.title}: ${repaired} repeated picture(s)/title(s) replaced`);
   return created;
+}
+
+// Episodes whose picture, or real (non-"Episode N") title, also belongs to another episode of the
+// same season - every one of them, the original included (TMDB may have fixed either).
+function repeatedEpisodes(episodes) {
+  const groups = new Map();
+  for (const episode of episodes) {
+    const season = episode.season.seasonNumber;
+    const keys = [];
+    if (episode.stillImage) keys.push(`${season}|p|${episode.stillImage}`);
+    const title = (episode.title || '').trim();
+    if (title && !/^episode\s*\d+$/i.test(title)) keys.push(`${season}|t|${title.toLowerCase()}`);
+    for (const key of keys) {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(episode);
+    }
+  }
+  const ids = new Set();
+  const seasons = new Set();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    for (const episode of group) {
+      ids.add(episode.id);
+      seasons.add(episode.season.seasonNumber);
+    }
+  }
+  return { ids, seasons };
 }
 
 function hasText(value) {
@@ -508,10 +575,31 @@ async function main() {
   const metadataSummary = await backfillMissingPublishedMetadata(provider.id, imgBase, MISSING_METADATA_BUDGET_MS);
   const base = { deletedAt: null, status: 'PUBLISHED', tmdbId: { not: null } };
   const select = { id: true, tmdbId: true, title: true, seasonLayoutCustom: true };
-  const shows = await connectWithRetry(() =>
-    prisma.tVShow.findMany({ where: base, select, orderBy: { updatedAt: 'asc' } }),
+  const now = Date.now();
+  const active = {
+    OR: [
+      { lastAirDate: null },
+      { lastAirDate: { gte: new Date(now - ACTIVE_SHOW_DAYS * DAY_MS) } },
+      { releaseDate: { gte: new Date(now - 365 * DAY_MS) } },
+      { seasons: { some: { airDate: { gte: new Date(now - ACTIVE_SHOW_DAYS * DAY_MS) } } } },
+    ],
+  };
+  const [activeShows, dormantShows] = await connectWithRetry(() =>
+    Promise.all([
+      prisma.tVShow.findMany({ where: { ...base, ...active }, select, orderBy: { updatedAt: 'asc' } }),
+      prisma.tVShow.findMany({
+        where: { ...base, NOT: active, updatedAt: { lt: new Date(now - DORMANT_RECHECK_DAYS * DAY_MS) } },
+        select,
+        orderBy: { updatedAt: 'asc' },
+        take: DORMANT_PER_RUN,
+      }),
+    ]),
   );
-  console.log(`Refreshing all ${shows.length} published shows in least-recently-checked order...`);
+  // The few older ones first: the active list can outlast the time budget, and they must still get their turn.
+  const shows = [...dormantShows, ...activeShows];
+  console.log(
+    `Refreshing ${activeShows.length} recent/airing shows and ${dormantShows.length} older ones (monthly recheck)...`,
+  );
 
   let done = 0;
   let newEpisodesTotal = 0;
