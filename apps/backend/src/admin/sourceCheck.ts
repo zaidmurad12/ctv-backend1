@@ -181,15 +181,21 @@ export class SourceCheckService {
       id: { in: list },
       OR: [{ hasSourceMatch: null }, { hasSourceMatch: false }],
     });
-    // Titles turning compatible now get dated first (see Movie.sourceMatchedAt).
+    // Titles turning compatible now get dated first (see Movie.sourceMatchedAt) - and so do
+    // compatible ones with no date yet (marked before dates were recorded), so re-checking one here
+    // puts it at the front of the "recently added" home row.
     const now = new Date();
+    const toDate = (list: string[]) => ({
+      id: { in: list },
+      OR: [{ hasSourceMatch: null }, { hasSourceMatch: false }, { sourceMatchedAt: null }],
+    });
     await Promise.all([
       this.prisma.movie.updateMany({
-        where: downgradable(ids('movie', true)),
+        where: toDate(ids('movie', true)),
         data: { sourceMatchedAt: now },
       }),
       this.prisma.tVShow.updateMany({
-        where: downgradable(ids('show', true)),
+        where: toDate(ids('show', true)),
         data: { sourceMatchedAt: now },
       }),
     ]);

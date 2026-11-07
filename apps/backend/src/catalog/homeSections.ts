@@ -26,7 +26,7 @@ export interface HomeSectionDto {
 }
 
 // How recently a series' new season must have premiered to count as "recently added".
-const NEW_SEASON_DAYS = 60;
+const NEW_SEASON_DAYS = 21;
 // Only titles released within this long count as "recently added" - an old film a source has just
 // added stays out (a new season of an older series still counts: the season itself is new).
 const RECENT_RELEASE_DAYS = 365;
