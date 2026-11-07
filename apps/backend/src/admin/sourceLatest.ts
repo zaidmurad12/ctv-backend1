@@ -342,13 +342,22 @@ export class SourceLatestService {
   }
 
   private async markCompatible(kind: 'movie' | 'show', id: string): Promise<void> {
+    const newlyCompatible = { id, OR: [{ hasSourceMatch: null }, { hasSourceMatch: false }] };
     if (kind === 'movie') {
+      await this.prisma.movie.updateMany({
+        where: newlyCompatible,
+        data: { sourceMatchedAt: new Date() },
+      });
       await this.prisma.movie.update({ where: { id }, data: { hasSourceMatch: true } });
       await this.prisma.movie.updateMany({
         where: { id, status: 'DRAFT' },
         data: { status: 'PUBLISHED' },
       });
     } else {
+      await this.prisma.tVShow.updateMany({
+        where: newlyCompatible,
+        data: { sourceMatchedAt: new Date() },
+      });
       await this.prisma.tVShow.update({ where: { id }, data: { hasSourceMatch: true } });
       await this.prisma.tVShow.updateMany({
         where: { id, status: 'DRAFT' },

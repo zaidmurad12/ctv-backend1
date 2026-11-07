@@ -181,6 +181,18 @@ export class SourceCheckService {
       id: { in: list },
       OR: [{ hasSourceMatch: null }, { hasSourceMatch: false }],
     });
+    // Titles turning compatible now get dated first (see Movie.sourceMatchedAt).
+    const now = new Date();
+    await Promise.all([
+      this.prisma.movie.updateMany({
+        where: downgradable(ids('movie', true)),
+        data: { sourceMatchedAt: now },
+      }),
+      this.prisma.tVShow.updateMany({
+        where: downgradable(ids('show', true)),
+        data: { sourceMatchedAt: now },
+      }),
+    ]);
     const [movieFound, movieMissing, showFound, showMissing] = await Promise.all([
       this.prisma.movie.updateMany({
         where: { id: { in: ids('movie', true) } },

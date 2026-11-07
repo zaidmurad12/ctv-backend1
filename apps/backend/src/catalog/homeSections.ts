@@ -104,7 +104,8 @@ export class HomeSectionsUseCases {
 
   // The titles the sources added most recently: what the TVs reported from the sources' own "newly
   // added" lists and the server linked to (or imported into) the catalog, by when it was first
-  // reported - plus compatible series whose newest season (2 or later) premiered in the last
+  // reported; titles turned compatible any other way (the source-check page - the only route for
+  // CEE, whose newly added list the TVs don't read), by when that happened - plus compatible series whose newest season (2 or later) premiered in the last
   // NEW_SEASON_DAYS, by that premiere. The sources list a series under one number for all its
   // seasons, so a series reappearing there can't tell a new season from a new episode; the season's
   // own premiere can, and a new episode of a running season never moves the series. All of these
@@ -116,7 +117,7 @@ export class HomeSectionsUseCases {
     const client = this.prismaService.client;
     const take = (limit + 1) * 3;
     const now = new Date();
-    const [reported, seasons] = await Promise.all([
+    const [reported, seasons, matchedMovies, matchedShows] = await Promise.all([
       client.sourceCatalogItem.findMany({
         where: {
           status: 'MATCHED',
@@ -143,6 +144,22 @@ export class HomeSectionsUseCases {
             take,
             select: { showId: true, airDate: true },
           }),
+      media === 'series'
+        ? []
+        : client.movie.findMany({
+            where: { hasSourceMatch: true, sourceMatchedAt: { not: null }, deletedAt: null },
+            orderBy: { sourceMatchedAt: 'desc' },
+            take,
+            select: { id: true, sourceMatchedAt: true },
+          }),
+      media === 'movie'
+        ? []
+        : client.tVShow.findMany({
+            where: { hasSourceMatch: true, sourceMatchedAt: { not: null }, deletedAt: null },
+            orderBy: { sourceMatchedAt: 'desc' },
+            take,
+            select: { id: true, sourceMatchedAt: true },
+          }),
     ]);
     const latest = new Map<string, { movieId: string | null; showId: string | null; at: number }>();
     const add = (movieId: string | null, showId: string | null, at: Date | null) => {
@@ -152,6 +169,8 @@ export class HomeSectionsUseCases {
     };
     for (const row of reported) add(row.matchedMovieId, row.matchedShowId, row.discoveredAt);
     for (const row of seasons) add(null, row.showId, row.airDate);
+    for (const row of matchedMovies) add(row.id, null, row.sourceMatchedAt);
+    for (const row of matchedShows) add(null, row.id, row.sourceMatchedAt);
     const ordered = [...latest.values()].sort((x, y) => y.at - x.at);
     const items = await this.customItems(ordered, limit + 1);
     return { items: items.slice(0, limit), hasMore: items.length > limit };

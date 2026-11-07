@@ -161,6 +161,10 @@ model Movie {
   // sourceless titles the app can still actually play live (a real source match exists, just
   // never pulled into a stored Stream row) versus which ones are genuinely dead.
   hasSourceMatch            Boolean?
+  // When hasSourceMatch last turned true (by the TVs' source lists or the source-check page) - orders
+  // the "recently added in the sources" home row (catalog/homeSections.ts). Null = never, or before
+  // this was recorded. Added at startup by PrismaService (this database has no migrations).
+  sourceMatchedAt    DateTime?
   sourceMatchCheckedAt      DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
@@ -229,6 +233,10 @@ model TVShow {
   // Manually marked by an admin after testing in the app (true = plays from a source, false =
   // tested and does not, null = not tested yet) - see Movie.hasSourceMatch.
   hasSourceMatch     Boolean?
+  // When hasSourceMatch last turned true (by the TVs' source lists or the source-check page) - orders
+  // the "recently added in the sources" home row (catalog/homeSections.ts). Null = never, or before
+  // this was recorded. Added at startup by PrismaService (this database has no migrations).
+  sourceMatchedAt    DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   deletedAt          DateTime?
