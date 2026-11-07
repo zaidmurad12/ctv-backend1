@@ -27,6 +27,9 @@ export interface HomeSectionDto {
 
 // How recently a series' new season must have premiered to count as "recently added".
 const NEW_SEASON_DAYS = 60;
+// Only titles released within this long count as "recently added" - an old film a source has just
+// added stays out (a new season of an older series still counts: the season itself is new).
+const RECENT_RELEASE_DAYS = 365;
 
 @Injectable()
 export class HomeSectionsUseCases {
@@ -117,16 +120,18 @@ export class HomeSectionsUseCases {
     const client = this.prismaService.client;
     const take = (limit + 1) * 3;
     const now = new Date();
+    const releasedAfter = new Date(now.getTime() - RECENT_RELEASE_DAYS * 86_400_000);
+    const recent = { releaseDate: { gte: releasedAfter } };
     const [reported, seasons, matchedMovies, matchedShows] = await Promise.all([
       client.sourceCatalogItem.findMany({
         where: {
           status: 'MATCHED',
           matchMethod: { startsWith: 'tv-' },
           ...(media === 'movie'
-            ? { matchedMovieId: { not: null } }
+            ? { matchedMovie: recent }
             : media === 'series'
-              ? { matchedShowId: { not: null } }
-              : { OR: [{ matchedMovieId: { not: null } }, { matchedShowId: { not: null } }] }),
+              ? { matchedShow: recent }
+              : { OR: [{ matchedMovie: recent }, { matchedShow: recent }] }),
         },
         orderBy: { discoveredAt: 'desc' },
         take,
@@ -147,7 +152,12 @@ export class HomeSectionsUseCases {
       media === 'series'
         ? []
         : client.movie.findMany({
-            where: { hasSourceMatch: true, sourceMatchedAt: { not: null }, deletedAt: null },
+            where: {
+              hasSourceMatch: true,
+              sourceMatchedAt: { not: null },
+              deletedAt: null,
+              ...recent,
+            },
             orderBy: { sourceMatchedAt: 'desc' },
             take,
             select: { id: true, sourceMatchedAt: true },
@@ -155,7 +165,12 @@ export class HomeSectionsUseCases {
       media === 'movie'
         ? []
         : client.tVShow.findMany({
-            where: { hasSourceMatch: true, sourceMatchedAt: { not: null }, deletedAt: null },
+            where: {
+              hasSourceMatch: true,
+              sourceMatchedAt: { not: null },
+              deletedAt: null,
+              ...recent,
+            },
             orderBy: { sourceMatchedAt: 'desc' },
             take,
             select: { id: true, sourceMatchedAt: true },
