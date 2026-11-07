@@ -6,8 +6,8 @@
 // replacing LATEST_APK_FILENAME, before this backend is redeployed. Forgetting either half (the
 // numbers here, or the file in release-assets) means the check offers a build nobody can actually
 // download, or never offers one that's already sitting there.
-export const LATEST_VERSION_CODE = 218;
-export const LATEST_VERSION_NAME = '1.24.58-sync-3h';
+export const LATEST_VERSION_CODE = 219;
+export const LATEST_VERSION_NAME = '1.24.59-fast-start';
 export const LATEST_APK_FILENAME = 'ctv-plus-latest.apk';
 // Set (non-empty) to hand the app this URL instead of this backend's own /downloads/<filename> -
 // Cloud Run's *.run.app domain turned out unreachable from at least one real user's network (a
@@ -21,6 +21,6 @@ export const LATEST_APK_FILENAME = 'ctv-plus-latest.apk';
 export const LATEST_APK_EXTERNAL_URL =
   'https://raw.githubusercontent.com/zaidmurad12/ctvplus/main/releases/ctv-plus-latest.apk';
 export const LATEST_NOTES_AR =
-  'مزامنة قوائم المصادر كل 3 ساعات دون تكرار الأعمال السابقة، وتشغيل التطبيق على الخادم الجديد.';
+  'فتح أسرع: تظهر الواجهة الرئيسية والأفلام والمسلسلات فوراً من آخر نسخة محفوظة، ومزامنة المصادر كل 3 ساعات دون تكرار.';
 export const LATEST_NOTES_EN =
-  'Source lists sync every 3 hours without repeating titles already handled; app now uses the new server.';
+  'Faster start: Home, Movies and Series show at once from the last saved copy; sources sync every 3 hours without repeats.';
