@@ -347,7 +347,7 @@ export type HomeSectionKind = 'RECENT' | 'POPULAR' | 'TOP_RATED' | 'SERIES' | 'C
 
 export interface HomeSectionRule {
   media: 'movie' | 'series' | 'all';
-  sort: 'newest' | 'rating' | 'popularity';
+  sort: 'newest' | 'rating' | 'popularity' | 'sourceAdded';
   language?: string;
   genre?: string;
   country?: string;

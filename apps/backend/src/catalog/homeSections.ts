@@ -42,6 +42,7 @@ export class HomeSectionsUseCases {
     limit: number,
     available = false,
   ): Promise<{ items: FeaturedItemDto[]; hasMore: boolean }> {
+    if (rule.sort === 'sourceAdded') return this.sourceAddedItems(rule.media, limit);
     const sort = rule.sort === 'newest' ? 'releaseDate' : rule.sort;
     // Only a rating sort needs a vote floor (a title with three votes shouldn't rank first) - and the floor
     // has to fit the catalog: Arabic/Turkish titles rarely have 50 votes on TMDB, which used to make the
@@ -96,6 +97,41 @@ export class HomeSectionsUseCases {
         ? await attempt(undefined)
         : first;
     return { items: raw.slice(0, limit), hasMore: raw.length > limit };
+  }
+
+  // The titles the sources added most recently: what the TVs reported from the sources' own "newly
+  // added" lists and the server linked to (or imported into) the catalog, by when it was first
+  // reported. All of them play from a source, so "available only" changes nothing here.
+  private async sourceAddedItems(
+    media: SectionRule['media'],
+    limit: number,
+  ): Promise<{ items: FeaturedItemDto[]; hasMore: boolean }> {
+    const rows = await this.prismaService.client.sourceCatalogItem.findMany({
+      where: {
+        status: 'MATCHED',
+        matchMethod: { startsWith: 'tv-' },
+        ...(media === 'movie'
+          ? { matchedMovieId: { not: null } }
+          : media === 'series'
+            ? { matchedShowId: { not: null } }
+            : { OR: [{ matchedMovieId: { not: null } }, { matchedShowId: { not: null } }] }),
+      },
+      orderBy: { discoveredAt: 'desc' },
+      take: (limit + 1) * 3,
+      select: { matchedMovieId: true, matchedShowId: true },
+    });
+    const seen = new Set<string>();
+    const wanted = rows.filter((row) => {
+      const key = row.matchedMovieId ? `m:${row.matchedMovieId}` : `s:${row.matchedShowId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const items = await this.customItems(
+      wanted.map((row) => ({ movieId: row.matchedMovieId, showId: row.matchedShowId })),
+      limit + 1,
+    );
+    return { items: items.slice(0, limit), hasMore: items.length > limit };
   }
 
   // For the admin's "what would this row show" preview - same computation the app gets.

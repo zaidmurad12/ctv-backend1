@@ -1,6 +1,8 @@
 export interface SectionRule {
   media: 'movie' | 'series' | 'all';
-  sort: 'newest' | 'rating' | 'popularity';
+  // sourceAdded: the titles the sources most recently added (as reported by the TVs - see
+  // admin/sourceLatest.ts), newest first; the other filters don't apply to it.
+  sort: 'newest' | 'rating' | 'popularity' | 'sourceAdded';
   language?: string;
   genre?: string;
   country?: string;
@@ -18,7 +20,10 @@ export function parseSectionRule(value: unknown): SectionRule {
   const v = (value ?? {}) as Partial<SectionRule>;
   return {
     media: v.media === 'movie' || v.media === 'series' ? v.media : 'all',
-    sort: v.sort === 'rating' || v.sort === 'popularity' ? v.sort : 'newest',
+    sort:
+      v.sort === 'rating' || v.sort === 'popularity' || v.sort === 'sourceAdded'
+        ? v.sort
+        : 'newest',
     language: typeof v.language === 'string' && v.language ? v.language : undefined,
     genre: typeof v.genre === 'string' && v.genre ? v.genre : undefined,
     country:

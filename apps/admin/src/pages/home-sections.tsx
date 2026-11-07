@@ -125,6 +125,7 @@ const SORT_LABEL: Record<HomeSectionRule['sort'], string> = {
   newest: 'الأحدث إصداراً',
   rating: 'الأعلى تقييماً',
   popularity: 'الأكثر شعبية',
+  sourceAdded: 'مضاف حديثاً في المصادر',
 };
 
 function ruleTitles(rule: HomeSectionRule): { ar: string; en: string } {
@@ -132,6 +133,11 @@ function ruleTitles(rule: HomeSectionRule): { ar: string; en: string } {
   const media = MEDIA_LABEL[rule.media];
   const langAr = rule.language ? ` ${LANGUAGE_AR[rule.language] ?? rule.language}` : '';
   const langEn = rule.language ? `${LANGUAGE_EN[rule.language] ?? rule.language} ` : '';
+  if (rule.sort === 'sourceAdded') {
+    if (rule.media === 'movie') return { ar: 'أفلام مضافة حديثاً', en: 'Recently Added Movies' };
+    if (rule.media === 'series') return { ar: 'مسلسلات مضافة حديثاً', en: 'Recently Added Series' };
+    return { ar: 'مضاف حديثاً', en: 'Recently Added' };
+  }
   if (rule.sort === 'newest')
     return { ar: `أحدث ${media.ar}${langAr}`, en: `Newest ${langEn}${media.en}` };
   if (rule.sort === 'rating')
@@ -633,7 +639,7 @@ function ImportForm({
                     title={item.title}
                   >
                     <div className="relative aspect-[2/3] bg-zinc-900 rounded-md overflow-hidden">
-                      { }
+                      {}
                       {item.poster && (
                         <img src={item.poster} alt="" className="w-full h-full object-cover" />
                       )}

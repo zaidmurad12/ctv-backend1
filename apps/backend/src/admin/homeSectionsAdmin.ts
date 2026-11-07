@@ -88,8 +88,8 @@ export class SectionRuleDto {
   @IsIn(['movie', 'series', 'all'])
   media!: 'movie' | 'series' | 'all';
 
-  @IsIn(['newest', 'rating', 'popularity'])
-  sort!: 'newest' | 'rating' | 'popularity';
+  @IsIn(['newest', 'rating', 'popularity', 'sourceAdded'])
+  sort!: 'newest' | 'rating' | 'popularity' | 'sourceAdded';
 
   @IsOptional()
   @IsString()
@@ -313,9 +313,7 @@ export class HomeSectionsAdminService {
     return this.homeSections.previewRule(parseSectionRule(rule), Math.min(100, Math.max(1, limit)));
   }
 
-  async planWithAi(
-    prompt: string,
-  ): Promise<{
+  async planWithAi(prompt: string): Promise<{
     titleAr: string;
     titleEn: string;
     maxItems: number;
