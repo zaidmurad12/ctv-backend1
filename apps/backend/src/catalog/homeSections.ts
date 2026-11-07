@@ -25,6 +25,9 @@ export interface HomeSectionDto {
   hasMore: boolean;
 }
 
+// How recently a series' new season must have premiered to count as "recently added".
+const NEW_SEASON_DAYS = 60;
+
 @Injectable()
 export class HomeSectionsUseCases {
   constructor(
@@ -101,36 +104,56 @@ export class HomeSectionsUseCases {
 
   // The titles the sources added most recently: what the TVs reported from the sources' own "newly
   // added" lists and the server linked to (or imported into) the catalog, by when it was first
-  // reported. All of them play from a source, so "available only" changes nothing here.
+  // reported - plus compatible series whose newest season (2 or later) premiered in the last
+  // NEW_SEASON_DAYS, by that premiere. The sources list a series under one number for all its
+  // seasons, so a series reappearing there can't tell a new season from a new episode; the season's
+  // own premiere can, and a new episode of a running season never moves the series. All of these
+  // play from a source, so "available only" changes nothing here.
   private async sourceAddedItems(
     media: SectionRule['media'],
     limit: number,
   ): Promise<{ items: FeaturedItemDto[]; hasMore: boolean }> {
-    const rows = await this.prismaService.client.sourceCatalogItem.findMany({
-      where: {
-        status: 'MATCHED',
-        matchMethod: { startsWith: 'tv-' },
-        ...(media === 'movie'
-          ? { matchedMovieId: { not: null } }
-          : media === 'series'
-            ? { matchedShowId: { not: null } }
-            : { OR: [{ matchedMovieId: { not: null } }, { matchedShowId: { not: null } }] }),
-      },
-      orderBy: { discoveredAt: 'desc' },
-      take: (limit + 1) * 3,
-      select: { matchedMovieId: true, matchedShowId: true },
-    });
-    const seen = new Set<string>();
-    const wanted = rows.filter((row) => {
-      const key = row.matchedMovieId ? `m:${row.matchedMovieId}` : `s:${row.matchedShowId}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    const items = await this.customItems(
-      wanted.map((row) => ({ movieId: row.matchedMovieId, showId: row.matchedShowId })),
-      limit + 1,
-    );
+    const client = this.prismaService.client;
+    const take = (limit + 1) * 3;
+    const now = new Date();
+    const [reported, seasons] = await Promise.all([
+      client.sourceCatalogItem.findMany({
+        where: {
+          status: 'MATCHED',
+          matchMethod: { startsWith: 'tv-' },
+          ...(media === 'movie'
+            ? { matchedMovieId: { not: null } }
+            : media === 'series'
+              ? { matchedShowId: { not: null } }
+              : { OR: [{ matchedMovieId: { not: null } }, { matchedShowId: { not: null } }] }),
+        },
+        orderBy: { discoveredAt: 'desc' },
+        take,
+        select: { matchedMovieId: true, matchedShowId: true, discoveredAt: true },
+      }),
+      media === 'movie'
+        ? []
+        : client.season.findMany({
+            where: {
+              seasonNumber: { gte: 2 },
+              airDate: { lte: now, gte: new Date(now.getTime() - NEW_SEASON_DAYS * 86_400_000) },
+              show: { hasSourceMatch: true, deletedAt: null },
+            },
+            orderBy: { airDate: 'desc' },
+            take,
+            select: { showId: true, airDate: true },
+          }),
+    ]);
+    const latest = new Map<string, { movieId: string | null; showId: string | null; at: number }>();
+    const add = (movieId: string | null, showId: string | null, at: Date | null) => {
+      const key = movieId ? `m:${movieId}` : `s:${showId}`;
+      const time = at?.getTime() ?? 0;
+      if ((latest.get(key)?.at ?? -1) < time) latest.set(key, { movieId, showId, at: time });
+    };
+    for (const row of reported) add(row.matchedMovieId, row.matchedShowId, row.discoveredAt);
+    for (const row of seasons) add(null, row.showId, row.airDate);
+    const ordered = [...latest.values()].sort((x, y) => y.at - x.at);
+    const items = await this.customItems(ordered, limit + 1);
     return { items: items.slice(0, limit), hasMore: items.length > limit };
   }
 
