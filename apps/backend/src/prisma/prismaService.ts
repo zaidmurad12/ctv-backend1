@@ -19,6 +19,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     await this.client.$connect();
     await this.addSourceMatchedAt();
+    for (const table of ['Movie', 'TVShow']) {
+      await this.client.$executeRawUnsafe(
+        `alter table "${table}" add column if not exists "promotedAt" timestamp(3)`,
+      );
+    }
   }
 
   // This database is changed by hand (no migrations), so the one column added since is added here.

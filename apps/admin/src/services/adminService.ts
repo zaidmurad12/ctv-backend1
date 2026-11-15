@@ -268,8 +268,8 @@ export const adminService = {
     return apiRequest('admin/jobs/run', { method: 'POST', body: { job } });
   },
 
-  markRecentlyAdded(type: 'movie' | 'show', id: string): Promise<{ ok: true }> {
-    return apiRequest('admin/source-check/mark-recent', { method: 'POST', body: { type, id } });
+  moveToNewest(type: 'movie' | 'show', id: string): Promise<{ ok: true }> {
+    return apiRequest('admin/source-check/promote', { method: 'POST', body: { type, id } });
   },
 
   sourceCheckTvLog(limit = 200): Promise<TvSyncLog> {

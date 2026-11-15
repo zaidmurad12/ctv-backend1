@@ -1,4 +1,4 @@
-import { MarkRecentButton } from '../../components/MarkRecentButton';
+import { MoveToNewestButton } from '../../components/MoveToNewestButton';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import {
@@ -208,7 +208,7 @@ export default function ShowDetailPage() {
                 <Eye size={12} />
                 معاينة من المصادر
               </button>
-              <MarkRecentButton type="show" id={show.id} />
+              <MoveToNewestButton type="show" id={show.id} />
               <button
                 type="button"
                 disabled={reimporting}

@@ -122,46 +122,64 @@ export class HomeSectionsUseCases {
     const now = new Date();
     const releasedAfter = new Date(now.getTime() - RECENT_RELEASE_DAYS * 86_400_000);
     const recent = { releaseDate: { gte: releasedAfter } };
-    const [seasons, matchedMovies, matchedShows] = await Promise.all([
-      media === 'movie'
-        ? []
-        : client.season.findMany({
-            where: {
-              seasonNumber: { gte: 2 },
-              airDate: { lte: now, gte: new Date(now.getTime() - NEW_SEASON_DAYS * 86_400_000) },
-              show: { hasSourceMatch: true, deletedAt: null },
-            },
-            orderBy: { airDate: 'desc' },
-            take,
-            select: { showId: true, airDate: true },
-          }),
-      media === 'series'
-        ? []
-        : client.movie.findMany({
-            where: {
-              hasSourceMatch: true,
-              sourceMatchedAt: { not: null },
-              deletedAt: null,
-              ...recent,
-            },
-            orderBy: { sourceMatchedAt: 'desc' },
-            take,
-            select: { id: true, sourceMatchedAt: true },
-          }),
-      media === 'movie'
-        ? []
-        : client.tVShow.findMany({
-            where: {
-              hasSourceMatch: true,
-              sourceMatchedAt: { not: null },
-              deletedAt: null,
-              ...recent,
-            },
-            orderBy: { sourceMatchedAt: 'desc' },
-            take,
-            select: { id: true, sourceMatchedAt: true },
-          }),
-    ]);
+    const [seasons, matchedMovies, matchedShows, promotedMovies, promotedShows] = await Promise.all(
+      [
+        media === 'movie'
+          ? []
+          : client.season.findMany({
+              where: {
+                seasonNumber: { gte: 2 },
+                airDate: { lte: now, gte: new Date(now.getTime() - NEW_SEASON_DAYS * 86_400_000) },
+                show: { hasSourceMatch: true, deletedAt: null },
+              },
+              orderBy: { airDate: 'desc' },
+              take,
+              select: { showId: true, airDate: true },
+            }),
+        media === 'series'
+          ? []
+          : client.movie.findMany({
+              where: {
+                hasSourceMatch: true,
+                sourceMatchedAt: { not: null },
+                deletedAt: null,
+                ...recent,
+              },
+              orderBy: { sourceMatchedAt: 'desc' },
+              take,
+              select: { id: true, sourceMatchedAt: true },
+            }),
+        media === 'movie'
+          ? []
+          : client.tVShow.findMany({
+              where: {
+                hasSourceMatch: true,
+                sourceMatchedAt: { not: null },
+                deletedAt: null,
+                ...recent,
+              },
+              orderBy: { sourceMatchedAt: 'desc' },
+              take,
+              select: { id: true, sourceMatchedAt: true },
+            }),
+        media === 'series'
+          ? []
+          : client.movie.findMany({
+              where: { promotedAt: { not: null }, deletedAt: null },
+              orderBy: { promotedAt: 'desc' },
+              take,
+              select: { id: true, promotedAt: true },
+            }),
+        media === 'movie'
+          ? []
+          : client.tVShow.findMany({
+              where: { promotedAt: { not: null }, deletedAt: null },
+              orderBy: { promotedAt: 'desc' },
+              take,
+              select: { id: true, promotedAt: true },
+            }),
+      ],
+    );
     const latest = new Map<string, { movieId: string | null; showId: string | null; at: number }>();
     const add = (movieId: string | null, showId: string | null, at: Date | null) => {
       const key = movieId ? `m:${movieId}` : `s:${showId}`;
@@ -171,6 +189,9 @@ export class HomeSectionsUseCases {
     for (const row of seasons) add(null, row.showId, row.airDate);
     for (const row of matchedMovies) add(row.id, null, row.sourceMatchedAt);
     for (const row of matchedShows) add(null, row.id, row.sourceMatchedAt);
+    // Moved there by the admin's "move to newest" button - any age (see SourceCheckService.promote).
+    for (const row of promotedMovies) add(row.id, null, row.promotedAt);
+    for (const row of promotedShows) add(null, row.id, row.promotedAt);
     const ordered = [...latest.values()].sort((x, y) => y.at - x.at);
     const items = await this.customItems(ordered, limit + 1);
     return { items: items.slice(0, limit), hasMore: items.length > limit };

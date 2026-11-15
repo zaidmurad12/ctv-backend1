@@ -177,23 +177,13 @@ export class SourceCheckService {
     };
   }
 
-  // The admin's "show in recently added" button: the title becomes compatible (and live, if a
-  // draft) and is dated now, which puts it at the front of the "recently added" home row.
-  async markRecent(body: MarkRecentBody): Promise<{ ok: true }> {
-    const data = { hasSourceMatch: true, sourceMatchedAt: new Date() };
-    if (body.type === 'movie') {
-      await this.prisma.movie.update({ where: { id: body.id }, data });
-      await this.prisma.movie.updateMany({
-        where: { id: body.id, status: 'DRAFT' },
-        data: { status: 'PUBLISHED' },
-      });
-    } else {
-      await this.prisma.tVShow.update({ where: { id: body.id }, data });
-      await this.prisma.tVShow.updateMany({
-        where: { id: body.id, status: 'DRAFT' },
-        data: { status: 'PUBLISHED' },
-      });
-    }
+  // The admin's "move to newest" button: the title goes first in the "recently added" home row
+  // (whatever its age) and moves back as newer titles arrive or are moved there. Nothing else about
+  // the title changes. Pressing it again moves it to the front again.
+  async promote(body: MarkRecentBody): Promise<{ ok: true }> {
+    const data = { promotedAt: new Date() };
+    if (body.type === 'movie') await this.prisma.movie.update({ where: { id: body.id }, data });
+    else await this.prisma.tVShow.update({ where: { id: body.id }, data });
     return { ok: true };
   }
 
@@ -283,10 +273,10 @@ export class SourceCheckController {
     return this.service.saveResults(body);
   }
 
-  @Post('mark-recent')
+  @Post('promote')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Mark a title compatible and put it first in the recently added row' })
-  markRecent(@Body() body: MarkRecentBody) {
-    return this.service.markRecent(body);
+  @ApiOperation({ summary: 'Move a title to the front of the recently added row' })
+  promote(@Body() body: MarkRecentBody) {
+    return this.service.promote(body);
   }
 }
