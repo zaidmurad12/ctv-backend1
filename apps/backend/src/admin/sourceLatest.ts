@@ -58,10 +58,14 @@ export class LatestSourceBody {
   items!: LatestSourceItem[];
 }
 
-const IMPORTS_PER_DAY = 40;
+const IMPORTS_PER_DAY = 60;
 const IMPORTS_PER_CALL = 8;
 const CALL_BUDGET_MS = 200_000;
 const RETRY_UNMATCHED_MS = 3 * 24 * 3600_000;
+// Titles reported before the title search existed and left out for having no IMDb link (or no TMDB
+// entry for it) - the TVs won't send them again, so each call retries a few of them itself.
+const BACKLOG_PER_CALL = 3;
+const OLD_MISSES = ['tv-noref', 'tv-notmdb'];
 
 function imdbOf(ref?: string): string | null {
   const m = /(tt\d{6,10})/i.exec(ref ?? '');
@@ -112,8 +116,8 @@ export class SourceLatestService {
       const recentMiss =
         row.status === 'UNMATCHED' &&
         !!row.matchMethod?.startsWith('tv-') &&
-        (row.matchMethod === 'tv-noref' ||
-          (row.lastAttemptAt != null && row.lastAttemptAt > retryAfter));
+        row.lastAttemptAt != null &&
+        row.lastAttemptAt > retryAfter;
       if (row.status === 'MATCHED' || recentMiss) {
         done.add(`${row.kind === 'SERIES' ? 'series' : 'movie'}:${row.nb}`);
       }
@@ -164,35 +168,21 @@ export class SourceLatestService {
           this.seen.set(item.nb, now);
           continue;
         }
-        const imdb = imdbOf(item.ref);
-        if (!imdb || importsThisCall >= IMPORTS_PER_CALL || this.importsToday >= IMPORTS_PER_DAY) {
-          if (!imdb) {
-            this.seen.set(item.nb, now);
-            await this.record(item, kind, 'UNMATCHED', 'tv-noref', null);
-            done.add(item.nb);
-          }
+        // Left for a later call (not in `done`, so the TV sends it again) once the caps are reached.
+        if (importsThisCall >= IMPORTS_PER_CALL || this.importsToday >= IMPORTS_PER_DAY) {
           skipped++;
           continue;
         }
-        const tmdbId = await this.tmdbIdFor(kind, imdb);
         this.seen.set(item.nb, now);
-        if (!tmdbId) {
-          await this.record(item, kind, 'UNMATCHED', 'tv-notmdb', null);
+        const result = await this.importFromTmdb(kind, item);
+        if (result === 'no-match') {
           done.add(item.nb);
           skipped++;
           continue;
         }
         importsThisCall++;
-        this.importsToday++;
-        const id =
-          kind === 'movie'
-            ? await this.importer.importMovie(tmdbId)
-            : await this.importer.importShow(tmdbId);
-        await this.markCompatible(kind, id, true);
-        await this.record(item, kind, 'MATCHED', 'tv-import', id);
         imported++;
         done.add(item.nb);
-        this.logger.log(`imported ${kind} ${imdb} (source nb ${item.nb}) -> ${id}`);
       } catch (err) {
         skipped++;
         this.logger.warn(
@@ -200,7 +190,107 @@ export class SourceLatestService {
         );
       }
     }
+    // Spare room in this call goes to titles left out before the title search existed.
+    if (Date.now() - started < CALL_BUDGET_MS / 2) {
+      const backlog = await this.prisma.sourceCatalogItem.findMany({
+        where: { source: 'CINEMANA', status: 'UNMATCHED', matchMethod: { in: OLD_MISSES } },
+        orderBy: { lastAttemptAt: 'asc' },
+        take: Math.min(BACKLOG_PER_CALL, IMPORTS_PER_CALL - importsThisCall),
+      });
+      for (const row of backlog) {
+        if (this.importsToday >= IMPORTS_PER_DAY || Date.now() - started > CALL_BUDGET_MS) break;
+        const item: LatestSourceItem = {
+          nb: row.nb,
+          kind: row.kind === 'SERIES' ? 'series' : 'movie',
+          enTitle: row.enTitle ?? undefined,
+          arTitle: row.arTitle ?? undefined,
+          year: row.year != null ? String(row.year) : undefined,
+          ref: row.imdbId ?? undefined,
+        };
+        const kind = item.kind === 'series' ? 'show' : 'movie';
+        try {
+          const existing = await this.findExisting(kind, item);
+          if (existing) {
+            await this.markCompatible(kind, existing.id, false);
+            await this.record(item, kind, 'MATCHED', existing.method, existing.id);
+            matched++;
+          } else if ((await this.importFromTmdb(kind, item)) === 'imported') {
+            importsThisCall++;
+            imported++;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `backlog ${row.nb} failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          // Moved to the back of the backlog either way.
+          await this.record(item, kind, 'UNMATCHED', 'tv-notitle', null);
+        }
+      }
+    }
     return { matched, imported, skipped, done: [...done] };
+  }
+
+  // Finds the title on TMDB - by its IMDb link when the source gives one, otherwise by the source's
+  // own title and year - and imports it, whatever its age. 'no-match' is recorded so it isn't
+  // searched again for a few days.
+  private async importFromTmdb(
+    kind: 'movie' | 'show',
+    item: LatestSourceItem,
+  ): Promise<'imported' | 'no-match'> {
+    const imdb = imdbOf(item.ref);
+    const tmdbId = imdb
+      ? ((await this.tmdbIdFor(kind, imdb)) ?? (await this.tmdbIdByTitle(kind, item)))
+      : await this.tmdbIdByTitle(kind, item);
+    if (!tmdbId) {
+      await this.record(item, kind, 'UNMATCHED', 'tv-notitle', null);
+      return 'no-match';
+    }
+    this.importsToday++;
+    const id =
+      kind === 'movie'
+        ? await this.importer.importMovie(tmdbId)
+        : await this.importer.importShow(tmdbId);
+    await this.markCompatible(kind, id, true);
+    await this.record(item, kind, 'MATCHED', 'tv-import', id);
+    this.logger.log(`imported ${kind} tmdb ${tmdbId} (source nb ${item.nb}) -> ${id}`);
+    return 'imported';
+  }
+
+  // No IMDb link (common for older and Arabic titles): TMDB is searched with the source's English,
+  // then Arabic title, and only an exact title match (TMDB's title or original title - an Arabic
+  // film's original title is its Arabic one) within a year of the source's year is taken. A near
+  // miss would import a different film, so it isn't.
+  private async tmdbIdByTitle(
+    kind: 'movie' | 'show',
+    item: LatestSourceItem,
+  ): Promise<string | null> {
+    const year = Number(item.year) || undefined;
+    const queries = [item.enTitle, item.arTitle]
+      .map((t) => (t ?? '').trim())
+      .filter((t) => t.length >= 2);
+    const wanted = new Set(queries.map(norm));
+    if (!wanted.size) return null;
+    for (const query of queries) {
+      // TMDB's own year filter is exact; sources are sometimes a year off, so a second try without it.
+      for (const searchYear of year ? [year, undefined] : [undefined]) {
+        const results = await this.lookup.search(kind, query, searchYear);
+        const fits = results
+          .map((c) => {
+            const date = c.release_date ?? c.first_air_date ?? '';
+            const y = Number(date.slice(0, 4)) || undefined;
+            return { c, y };
+          })
+          .filter(({ c, y }) => {
+            if (year && (!y || Math.abs(y - year) > 1)) return false;
+            return [c.title, c.original_title, c.name, c.original_name].some((t) =>
+              wanted.has(norm(t)),
+            );
+          })
+          .sort((a, b) => Math.abs((a.y ?? 0) - (year ?? 0)) - Math.abs((b.y ?? 0) - (year ?? 0)));
+        if (fits[0]) return String(fits[0].c.id);
+      }
+    }
+    return null;
   }
 
   // IMDb id first (exact), otherwise the same title (English or Arabic) within a year.
