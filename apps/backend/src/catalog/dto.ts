@@ -115,6 +115,11 @@ export class MovieSummaryDto {
   @ApiProperty()
   id!: string;
 
+  // When the admin's "move to newest" button last moved this title - the newest lists treat it as
+  // released at that moment (see mergePromoted in catalog/infrastructure/queryHelpers.ts).
+  @ApiPropertyOptional()
+  promotedAt?: string | null;
+
   @ApiProperty()
   title!: string;
 
@@ -292,6 +297,11 @@ export class SeasonSummaryDto {
 export class ShowSummaryDto {
   @ApiProperty()
   id!: string;
+
+  // When the admin's "move to newest" button last moved this title - the newest lists treat it as
+  // released at that moment (see mergePromoted in catalog/infrastructure/queryHelpers.ts).
+  @ApiPropertyOptional()
+  promotedAt?: string | null;
 
   @ApiProperty()
   title!: string;

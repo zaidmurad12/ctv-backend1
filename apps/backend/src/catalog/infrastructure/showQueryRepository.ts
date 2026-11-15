@@ -12,7 +12,12 @@ import {
   mapGenres,
   mapWriter,
 } from './creditsMapper.js';
-import { resolveOrderBy, resolveSkip } from './queryHelpers.js';
+import {
+  resolveOrderBy,
+  resolveSkip,
+  mergePromoted,
+  PROMOTED_MERGE_DEPTH,
+} from './queryHelpers.js';
 import type { MovieListParams } from './movieQueryRepository.js';
 
 @Injectable()
@@ -36,6 +41,30 @@ export class ShowQueryRepository {
       params.sort === 'releaseDate'
         ? { AND: [baseWhere, { releaseDate: { lte: new Date() } }] }
         : baseWhere;
+
+    if (
+      params.sort === 'releaseDate' &&
+      params.order !== 'asc' &&
+      skip + take <= PROMOTED_MERGE_DEPTH
+    ) {
+      const [plain, promoted, count] = await Promise.all([
+        this.prisma.tVShow.findMany({
+          where,
+          include: { images: true, genres: { include: { genre: true } } },
+          take: skip + take,
+          orderBy: resolveOrderBy(params.sort, params.order),
+        }),
+        this.prisma.tVShow.findMany({
+          where: { AND: [baseWhere, { promotedAt: { not: null } }] },
+          include: { images: true, genres: { include: { genre: true } } },
+          take: skip + take,
+          orderBy: { promotedAt: 'desc' },
+        }),
+        this.prisma.tVShow.count({ where }),
+      ]);
+      const merged = mergePromoted(plain, promoted).slice(skip, skip + take);
+      return { items: merged.map((row) => this.toSummary(row)), total: count };
+    }
 
     const [rows, total] = await Promise.all([
       this.prisma.tVShow.findMany({
@@ -221,6 +250,7 @@ export class ShowQueryRepository {
     status: string;
     images: Array<{ type: string; url: string }>;
     logo?: string | null;
+    promotedAt?: Date | null;
     hasSourceMatch?: boolean | null;
     genres: Parameters<typeof mapGenres>[0];
   }): ShowSummaryDto {
@@ -232,6 +262,7 @@ export class ShowQueryRepository {
       overviewAr: row.overviewAr,
       imdbId: row.imdbId,
       releaseDate: row.releaseDate ? row.releaseDate.toISOString() : null,
+      promotedAt: row.promotedAt ? row.promotedAt.toISOString() : null,
       rating: row.rating === null ? null : Number(row.rating),
       numberOfSeasons: row.numberOfSeasons,
       numberOfEpisodes: row.numberOfEpisodes,

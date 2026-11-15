@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { ArrowUpToLine, Check, Loader2 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 
-// Moves a title to the front of the "recently added" home row - it moves back as newer titles arrive
-// or are moved there (see the backend's admin/sourceCheck.ts promote). Can be pressed again any time.
+// Moves a title to the front of the newest lists (the app's "الأحدث" row) - it steps back as newer
+// titles come out or are moved there (see the backend's admin/sourceCheck.ts promote). Can be pressed
+// again any time.
 export function MoveToNewestButton({ type, id }: { type: 'movie' | 'show'; id: string }) {
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
 
@@ -23,7 +24,7 @@ export function MoveToNewestButton({ type, id }: { type: 'movie' | 'show'; id: s
       type="button"
       disabled={state === 'busy'}
       onClick={() => void move()}
-      title="يظهر العمل أول قسم «مضاف حديثاً»، ويتراجع حين تصل أعمال أحدث منه"
+      title="يظهر العمل أول قسم «الأحدث»، ويتراجع حين تصدر أعمال أحدث منه"
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-300 border border-emerald-900 hover:bg-zinc-900 transition-colors disabled:opacity-60"
     >
       {state === 'busy' ? (

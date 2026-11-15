@@ -26,3 +26,18 @@ export function resolveOrderBy(
 export function resolveSkip(page: number | undefined, limit: number | undefined): number {
   return ((page ?? 1) - 1) * (limit ?? 20);
 }
+
+// "Newest" (release date, newest first) with the admin's "move to newest" button: a moved title
+// counts as released at the moment it was moved, so it shows first and steps back as newer titles
+// come out. Only the first PROMOTED_MERGE_DEPTH rows are merged this way; deeper pages are read
+// as they are (a moved title may then show twice across that boundary - the app drops repeats).
+export const PROMOTED_MERGE_DEPTH = 300;
+
+export function mergePromoted<
+  T extends { id: string; releaseDate: Date | null; promotedAt?: Date | null },
+>(plain: T[], promoted: T[]): T[] {
+  const at = (row: T) => Math.max(row.releaseDate?.getTime() ?? 0, row.promotedAt?.getTime() ?? 0);
+  const byId = new Map<string, T>();
+  for (const row of [...plain, ...promoted]) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => at(b) - at(a) || (a.id < b.id ? -1 : 1));
+}

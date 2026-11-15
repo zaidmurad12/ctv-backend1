@@ -177,9 +177,9 @@ export class SourceCheckService {
     };
   }
 
-  // The admin's "move to newest" button: the title goes first in the "recently added" home row
-  // (whatever its age) and moves back as newer titles arrive or are moved there. Nothing else about
-  // the title changes. Pressing it again moves it to the front again.
+  // The admin's "move to newest" button: the newest lists (release date order - the app's "الأحدث"
+  // row) treat the title as released now, so it shows first and steps back as newer titles come out
+  // or are moved there. Nothing else about the title changes; pressing it again moves it up again.
   async promote(body: MarkRecentBody): Promise<{ ok: true }> {
     const data = { promotedAt: new Date() };
     if (body.type === 'movie') await this.prisma.movie.update({ where: { id: body.id }, data });
@@ -275,7 +275,7 @@ export class SourceCheckController {
 
   @Post('promote')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Move a title to the front of the recently added row' })
+  @ApiOperation({ summary: 'Move a title to the front of the newest lists' })
   promote(@Body() body: MarkRecentBody) {
     return this.service.promote(body);
   }
