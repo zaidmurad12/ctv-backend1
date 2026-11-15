@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -20,6 +21,9 @@ import { TmdbLookupService } from './infrastructure/tmdbLookupService.js';
 // series a day). The sources only answer from inside Iraq, so the TV app fetches them there and
 // posts them here; this server marks the titles we already have as compatible (publishing drafts),
 // and imports from TMDB, by IMDb id, the ones we don't have yet.
+
+// The admin's "import from the sources" page: at most one source page (24 titles) per request.
+const ADMIN_IMPORT_PER_CALL_LIMIT = 24;
 
 export class LatestSourceItem {
   @IsString()
@@ -50,6 +54,43 @@ export class LatestSourceItem {
   ref?: string;
 }
 
+export class SourceImportItem extends LatestSourceItem {
+  @IsIn(['cinemana', 'cee'])
+  source!: 'cinemana' | 'cee';
+}
+
+export class SourceImportBody {
+  @IsArray()
+  @ArrayMaxSize(ADMIN_IMPORT_PER_CALL_LIMIT)
+  @ValidateNested({ each: true })
+  @Type(() => SourceImportItem)
+  items!: SourceImportItem[];
+
+  // Only report what each title is in the app now - change nothing.
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+export type SourceImportState =
+  | 'published' // in the app, compatible and live - nothing to do
+  | 'hidden' // in the catalog but not live or not marked compatible
+  | 'missing' // not in the catalog
+  | 'activated' // was hidden, now live and compatible
+  | 'imported' // was missing, imported from TMDB
+  | 'no-match' // not found on TMDB by its IMDb link or exact title + year
+  | 'db-full' // the free database is near its cap - nothing imported
+  | 'error';
+
+export interface SourceImportResult {
+  source: 'cinemana' | 'cee';
+  nb: string;
+  state: SourceImportState;
+  id?: string;
+  title?: string;
+  message?: string;
+}
+
 export class LatestSourceBody {
   @IsArray()
   @ArrayMaxSize(60)
@@ -59,6 +100,9 @@ export class LatestSourceBody {
 }
 
 const IMPORTS_PER_DAY = 60;
+// The admin's "import from the sources" page: nothing is imported once the free database passes
+// this size.
+const DB_STOP_MB = Number(process.env.DB_STOP_MB) || 850;
 const IMPORTS_PER_CALL = 8;
 const CALL_BUDGET_MS = 200_000;
 const RETRY_UNMATCHED_MS = 3 * 24 * 3600_000;
@@ -230,6 +274,132 @@ export class SourceLatestService {
     return { matched, imported, skipped, done: [...done] };
   }
 
+  // The admin's "import from the sources" page (run from a browser in Iraq, which lists or searches
+  // the sources and sends what it finds here). For each title: already in the app -> reported;
+  // in the catalog but hidden -> marked compatible and published; missing -> imported from TMDB
+  // (by IMDb link, else exact title + year), whatever its age. Either way the title is pinned to the
+  // exact source entry it came from, so it plays at once. dryRun only reports.
+  async adminImport(
+    body: SourceImportBody,
+  ): Promise<{ results: SourceImportResult[]; dbSizeMb: number | null }> {
+    let dbSizeMb = await this.databaseSizeMb();
+    const results: SourceImportResult[] = [];
+    for (const item of body.items) {
+      const kind = item.kind === 'series' ? 'show' : 'movie';
+      const base = { source: item.source, nb: item.nb };
+      const sourceKey = item.source === 'cee' ? ('CEE' as const) : ('CINEMANA' as const);
+      try {
+        const existing = await this.findExisting(kind, item);
+        if (existing) {
+          const row =
+            kind === 'movie'
+              ? await this.prisma.movie.findUnique({
+                  where: { id: existing.id },
+                  select: { title: true, titleAr: true, status: true, hasSourceMatch: true },
+                })
+              : await this.prisma.tVShow.findUnique({
+                  where: { id: existing.id },
+                  select: { title: true, titleAr: true, status: true, hasSourceMatch: true },
+                });
+          const title = row?.titleAr || row?.title;
+          const live = row?.status === 'PUBLISHED' && row.hasSourceMatch === true;
+          if (body.dryRun || live) {
+            results.push({ ...base, state: live ? 'published' : 'hidden', id: existing.id, title });
+            continue;
+          }
+          await this.markCompatible(kind, existing.id, true);
+          await this.pinSource(kind, existing.id, item);
+          await this.publish(kind, existing.id);
+          await this.record(item, kind, 'MATCHED', 'adm-match', existing.id, sourceKey);
+          results.push({ ...base, state: 'activated', id: existing.id, title });
+          continue;
+        }
+        if (body.dryRun) {
+          results.push({ ...base, state: 'missing' });
+          continue;
+        }
+        if (dbSizeMb !== null && dbSizeMb >= DB_STOP_MB) {
+          results.push({ ...base, state: 'db-full' });
+          continue;
+        }
+        const imdb = imdbOf(item.ref);
+        const tmdbId = imdb
+          ? ((await this.tmdbIdFor(kind, imdb)) ?? (await this.tmdbIdByTitle(kind, item)))
+          : await this.tmdbIdByTitle(kind, item);
+        if (!tmdbId) {
+          await this.record(item, kind, 'UNMATCHED', 'adm-none', null, sourceKey);
+          results.push({ ...base, state: 'no-match' });
+          continue;
+        }
+        const id =
+          kind === 'movie'
+            ? await this.importer.importMovie(tmdbId)
+            : await this.importer.importShow(tmdbId);
+        await this.markCompatible(kind, id, true);
+        await this.pinSource(kind, id, item);
+        await this.publish(kind, id);
+        await this.record(item, kind, 'MATCHED', 'adm-import', id, sourceKey);
+        const row =
+          kind === 'movie'
+            ? await this.prisma.movie.findUnique({
+                where: { id },
+                select: { title: true, titleAr: true },
+              })
+            : await this.prisma.tVShow.findUnique({
+                where: { id },
+                select: { title: true, titleAr: true },
+              });
+        results.push({ ...base, state: 'imported', id, title: row?.titleAr || row?.title });
+        dbSizeMb = await this.databaseSizeMb();
+      } catch (err) {
+        results.push({
+          ...base,
+          state: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { results, dbSizeMb };
+  }
+
+  // Links the title to the source entry it was found under (the same pin the admin's source picker
+  // sets), unless it already has one - so it plays without depending on the app's title matching.
+  private async pinSource(
+    kind: 'movie' | 'show',
+    id: string,
+    item: SourceImportItem,
+  ): Promise<void> {
+    const link = [{ source: item.source, nb: item.nb, kind: item.kind }];
+    const row =
+      kind === 'movie'
+        ? await this.prisma.movie.findUnique({ where: { id }, select: { sourceLinks: true } })
+        : await this.prisma.tVShow.findUnique({ where: { id }, select: { sourceLinks: true } });
+    if (Array.isArray(row?.sourceLinks) && row.sourceLinks.length > 0) return;
+    if (kind === 'movie')
+      await this.prisma.movie.update({ where: { id }, data: { sourceLinks: link } });
+    else await this.prisma.tVShow.update({ where: { id }, data: { sourceLinks: link } });
+  }
+
+  // Any status other than live (draft, pending, inactive) - the admin asked for this title to show.
+  private async publish(kind: 'movie' | 'show', id: string): Promise<void> {
+    const where = { id, status: { not: 'PUBLISHED' as const } };
+    const data = { status: 'PUBLISHED' as const };
+    if (kind === 'movie') await this.prisma.movie.updateMany({ where, data });
+    else await this.prisma.tVShow.updateMany({ where, data });
+  }
+
+  private async databaseSizeMb(): Promise<number | null> {
+    try {
+      const rows = (await this.prisma
+        .$queryRaw`select (pg_database_size(current_database()) / 1048576)::int as mb`) as Array<{
+        mb: number;
+      }>;
+      return Number(rows[0]?.mb ?? 0) || null;
+    } catch {
+      return null;
+    }
+  }
+
   // Finds the title on TMDB - by its IMDb link when the source gives one, otherwise by the source's
   // own title and year - and imports it, whatever its age. 'no-match' is recorded so it isn't
   // searched again for a few days.
@@ -350,6 +520,7 @@ export class SourceLatestService {
     status: 'MATCHED' | 'UNMATCHED',
     method: string,
     targetId: string | null,
+    source: 'CINEMANA' | 'CEE' = 'CINEMANA',
   ): Promise<void> {
     const data = {
       enTitle: item.enTitle?.slice(0, 500) ?? null,
@@ -366,8 +537,8 @@ export class SourceLatestService {
     const sourceKind = kind === 'movie' ? ('MOVIE' as const) : ('SERIES' as const);
     try {
       await this.prisma.sourceCatalogItem.upsert({
-        where: { source_kind_nb: { source: 'CINEMANA', kind: sourceKind, nb: item.nb } },
-        create: { source: 'CINEMANA', kind: sourceKind, nb: item.nb, attempts: 1, ...data },
+        where: { source_kind_nb: { source, kind: sourceKind, nb: item.nb } },
+        create: { source, kind: sourceKind, nb: item.nb, attempts: 1, ...data },
         update: { ...data, attempts: { increment: 1 } },
       });
     } catch (err) {
@@ -479,6 +650,15 @@ export class SourceLatestAdminController {
   })
   tvLog(@Query('limit') limit?: string) {
     return this.service.tvLog(Math.min(Math.max(Number(limit) || 100, 1), 300));
+  }
+
+  @Post('import')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Import from the sources: report, publish or import titles the admin page found there',
+  })
+  import(@Body() body: SourceImportBody) {
+    return this.service.adminImport(body);
   }
 }
 

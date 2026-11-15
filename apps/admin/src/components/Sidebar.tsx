@@ -14,6 +14,7 @@ import {
   Tv,
   Users,
   X,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { href: '/shows', label: 'المسلسلات', Icon: Tv },
   { href: '/discover', label: 'استيراد ذكي', Icon: Sparkles },
   { href: '/source-check', label: 'فحص التوافق', Icon: ScanSearch },
+  { href: '/source-import', label: 'استيراد من المصادر', Icon: Download },
   { href: '/jobs', label: 'مهام الاستيراد', Icon: Play },
   { href: '/banner', label: 'البنر الرئيسي', Icon: GalleryHorizontal },
   { href: '/home-sections', label: 'أقسام الشاشة الرئيسية', Icon: Sparkles },

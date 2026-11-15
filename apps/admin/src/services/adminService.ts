@@ -1,5 +1,6 @@
 import { apiRequest, apiRequestWithMeta } from '../lib/apiClient';
 import type { CheckTitle } from '../lib/sourceMatch';
+import type { SourceTitle } from '../lib/sourceCatalog';
 import type {
   AdminFeaturedItemDto,
   HomeSectionDto,
@@ -37,6 +38,18 @@ import type {
   UpdateSubtitlePatch,
   UserResponseDto,
 } from '../lib/types';
+
+export type SourceImportState =
+  'published' | 'hidden' | 'missing' | 'activated' | 'imported' | 'no-match' | 'db-full' | 'error';
+
+export interface SourceImportResult {
+  source: 'cinemana' | 'cee';
+  nb: string;
+  state: SourceImportState;
+  id?: string;
+  title?: string;
+  message?: string;
+}
 
 export interface PagedResult<T> {
   readonly items: T[];
@@ -266,6 +279,26 @@ export const adminService = {
 
   runJob(job: JobName): Promise<{ started: true }> {
     return apiRequest('admin/jobs/run', { method: 'POST', body: { job } });
+  },
+
+  // The "import from the sources" page (see pages/source-import.tsx). dryRun only reports.
+  importFromSources(
+    items: Array<SourceTitle>,
+    dryRun = false,
+  ): Promise<{ results: SourceImportResult[]; dbSizeMb: number | null }> {
+    const body = items.map(({ source, nb, kind, enTitle, arTitle, year, ref }) => ({
+      source,
+      nb,
+      kind,
+      enTitle: enTitle?.slice(0, 300),
+      arTitle: arTitle?.slice(0, 300),
+      year: year?.slice(0, 10),
+      ref: ref?.slice(0, 300),
+    }));
+    return apiRequest('admin/source-check/import', {
+      method: 'POST',
+      body: { items: body, dryRun },
+    });
   },
 
   moveToNewest(type: 'movie' | 'show', id: string): Promise<{ ok: true }> {
