@@ -22,7 +22,6 @@ import {
 // from inside Iraq, so this page reads them from this browser and sends what it finds to the server,
 // which publishes titles already in the catalog and imports missing ones from TMDB (any age).
 const IMPORT_BATCH = 3;
-const MAX_PAGES_PER_RUN = 100;
 
 const STATE_LABEL: Record<SourceImportState, string> = {
   published: 'موجود في التطبيق',
@@ -257,18 +256,45 @@ interface LogLine {
   tone: 'info' | 'ok' | 'warn';
 }
 
+type SourceChoice = SourceName | 'both';
+type KindChoice = SourceKind | 'both';
+type LanguageChoice = 'all' | 'arabic' | 'foreign';
+
+// The last catalog page finished for each source and kind, so a long scan can be stopped and
+// continued later from there (kept in this browser only).
+const PROGRESS_KEY = 'ctv.sourceImport.progress';
+type Progress = Record<string, number>;
+function loadProgress(): Progress {
+  try {
+    return JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}') as Progress;
+  } catch {
+    return {};
+  }
+}
+function saveProgress(progress: Progress) {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  } catch {
+    // Private window or blocked storage: the scan still works, it just can't resume.
+  }
+}
+const progressKey = (source: SourceName, kind: SourceKind) => `${source}:${kind}`;
+const KIND_LABEL: Record<SourceKind, string> = { movie: 'أفلام', series: 'مسلسلات' };
+
 function BrowsePanel({ onDbSize }: { onDbSize: (mb: number | null) => void }) {
-  const [source, setSource] = useState<SourceName>('cinemana');
-  const [kind, setKind] = useState<SourceKind>('movie');
-  const [fromPage, setFromPage] = useState('1');
-  const [toPage, setToPage] = useState('10');
-  const [arabicOnly, setArabicOnly] = useState(true);
+  const [source, setSource] = useState<SourceChoice>('both');
+  const [kind, setKind] = useState<KindChoice>('both');
+  const [language, setLanguage] = useState<LanguageChoice>('all');
+  const [resume, setResume] = useState(true);
+  const [maxPages, setMaxPages] = useState('');
   const [running, setRunning] = useState(false);
-  const [counts, setCounts] = useState({ scanned: 0, present: 0, added: 0, notFound: 0 });
+  const [counts, setCounts] = useState({ pages: 0, scanned: 0, present: 0, added: 0, notFound: 0 });
+  const [progress, setProgress] = useState<Progress>({});
   const [log, setLog] = useState<LogLine[]>([]);
   const stopRef = useRef(false);
   const logRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => setProgress(loadProgress()), []);
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [log.length]);
@@ -280,46 +306,53 @@ function BrowsePanel({ onDbSize }: { onDbSize: (mb: number | null) => void }) {
   );
 
   const say = (text: string, tone: LogLine['tone'] = 'info') =>
-    setLog((l) => [...l.slice(-400), { text, tone }]);
+    setLog((l) => [...l.slice(-500), { text, tone }]);
 
-  async function run() {
-    const first = Math.max(1, Number(fromPage) || 1);
-    const last = Math.min(first + MAX_PAGES_PER_RUN - 1, Math.max(first, Number(toPage) || first));
-    stopRef.current = false;
-    setRunning(true);
-    setLog([]);
-    setCounts({ scanned: 0, present: 0, added: 0, notFound: 0 });
-    say(
-      `${SOURCE_LABEL[source]} - ${kind === 'movie' ? 'أفلام' : 'مسلسلات'} - الصفحات ${first} إلى ${last}${
-        arabicOnly ? ' - العربية فقط' : ''
-      }`,
-    );
-    try {
-      for (let page = first; page <= last && !stopRef.current; page++) {
-        let titles: SourceTitle[];
-        try {
-          titles = await catalogPage(source, kind, page - 1);
-        } catch {
-          say(`الصفحة ${page}: تعذّر الوصول إلى المصدر (يجب أن تكون داخل العراق).`, 'warn');
-          break;
-        }
-        if (titles.length === 0) {
-          say(`الصفحة ${page}: فارغة - انتهى الكتالوج.`);
-          break;
-        }
-        const wanted = arabicOnly ? titles.filter(isArabic) : titles;
-        setCounts((c) => ({ ...c, scanned: c.scanned + wanted.length }));
-        if (wanted.length === 0) {
-          say(`الصفحة ${page}: لا أعمال عربية.`);
-          continue;
-        }
+  const sources: SourceName[] = source === 'both' ? ['cinemana', 'cee'] : [source];
+  const kinds: SourceKind[] = kind === 'both' ? ['movie', 'series'] : [kind];
+
+  function resetProgress() {
+    const next = { ...progress };
+    for (const s of sources) for (const k of kinds) delete next[progressKey(s, k)];
+    saveProgress(next);
+    setProgress(next);
+  }
+
+  // One source + kind: page by page from where it stopped last time (or the newest page) to the end
+  // of the catalog, the page limit, or Stop. Returns false when the run must end (stop, database full).
+  async function scan(src: SourceName, knd: SourceKind, pageBudget: { left: number }) {
+    const key = progressKey(src, knd);
+    const start = resume ? (loadProgress()[key] ?? 0) : 0;
+    say(`${SOURCE_LABEL[src]} - ${KIND_LABEL[knd]}: من الصفحة ${start + 1}`);
+    for (let page = start; pageBudget.left > 0 && !stopRef.current; page++) {
+      let titles: SourceTitle[];
+      try {
+        titles = await catalogPage(src, knd, page);
+      } catch {
+        say(`الصفحة ${page + 1}: تعذّر الوصول إلى المصدر (يجب أن تكون داخل العراق).`, 'warn');
+        return false;
+      }
+      if (titles.length === 0) {
+        say(`${SOURCE_LABEL[src]} - ${KIND_LABEL[knd]}: انتهى الكتالوج عند الصفحة ${page}.`, 'ok');
+        return true;
+      }
+      pageBudget.left--;
+      const wanted =
+        language === 'arabic'
+          ? titles.filter(isArabic)
+          : language === 'foreign'
+            ? titles.filter((t) => !isArabic(t))
+            : titles;
+      setCounts((c) => ({ ...c, pages: c.pages + 1, scanned: c.scanned + wanted.length }));
+      if (wanted.length > 0) {
         const check = await adminService.importFromSources(wanted, true);
         onDbSize(check.dbSizeMb);
         const todo = wanted.filter((t) =>
           needsImport(check.results.find((r) => keyOf(r) === keyOf(t))?.state),
         );
         setCounts((c) => ({ ...c, present: c.present + (wanted.length - todo.length) }));
-        say(`الصفحة ${page}: ${wanted.length} عملاً، ${todo.length} غير ظاهرة في التطبيق.`);
+        if (todo.length)
+          say(`الصفحة ${page + 1}: ${todo.length} من ${wanted.length} غير ظاهرة في التطبيق.`);
         for (let i = 0; i < todo.length && !stopRef.current; i += IMPORT_BATCH) {
           const { results, dbSizeMb } = await adminService.importFromSources(
             todo.slice(i, i + IMPORT_BATCH),
@@ -336,14 +369,39 @@ function BrowsePanel({ onDbSize }: { onDbSize: (mb: number | null) => void }) {
               say(`  - ${name}: لم يُعثر عليه في TMDB`, 'warn');
             } else if (r.state === 'db-full') {
               say('قاعدة البيانات بلغت 850 ميغابايت - توقف الاستيراد.', 'warn');
-              stopRef.current = true;
+              return false;
             } else if (r.state === 'error') {
               say(`  ! ${name}: ${r.message ?? 'خطأ'}`, 'warn');
             }
           }
         }
       }
-      say(stopRef.current ? 'توقف.' : 'انتهى.');
+      // Only a page finished in full counts - a stop mid-page redoes that page next time.
+      if (!stopRef.current) {
+        const next = { ...loadProgress(), [key]: page + 1 };
+        saveProgress(next);
+        setProgress(next);
+      }
+    }
+    return !stopRef.current;
+  }
+
+  async function run() {
+    stopRef.current = false;
+    setRunning(true);
+    setLog([]);
+    setCounts({ pages: 0, scanned: 0, present: 0, added: 0, notFound: 0 });
+    const pageBudget = { left: Number(maxPages) > 0 ? Number(maxPages) : Number.POSITIVE_INFINITY };
+    try {
+      const runs = sources.flatMap((s) => kinds.map((k) => [s, k] as const));
+      for (const [s, k] of runs) {
+        if (!(await scan(s, k, pageBudget))) break;
+        if (pageBudget.left <= 0) {
+          say('بلغ عدد الصفحات المحدد.');
+          break;
+        }
+      }
+      say(stopRef.current ? 'توقف - يكمل من الصفحة نفسها في المرة القادمة.' : 'انتهى.');
     } catch (err) {
       say(`توقف بسبب خطأ: ${err instanceof Error ? err.message : String(err)}`, 'warn');
     } finally {
@@ -356,46 +414,50 @@ function BrowsePanel({ onDbSize }: { onDbSize: (mb: number | null) => void }) {
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={source}
-          onChange={(e) => setSource(e.target.value as SourceName)}
+          onChange={(e) => setSource(e.target.value as SourceChoice)}
           className={inputCls}
           disabled={running}
         >
+          <option value="both">سينمانا وسي</option>
           <option value="cinemana">سينمانا</option>
           <option value="cee">سي</option>
         </select>
         <select
           value={kind}
-          onChange={(e) => setKind(e.target.value as SourceKind)}
+          onChange={(e) => setKind(e.target.value as KindChoice)}
           className={inputCls}
           disabled={running}
         >
+          <option value="both">أفلام ومسلسلات</option>
           <option value="movie">أفلام</option>
           <option value="series">مسلسلات</option>
         </select>
-        <span className="text-xs text-zinc-400">من الصفحة</span>
-        <input
-          value={fromPage}
-          onChange={(e) => setFromPage(e.target.value)}
-          className={`${inputCls} w-20`}
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value as LanguageChoice)}
+          className={inputCls}
           disabled={running}
-          inputMode="numeric"
-        />
-        <span className="text-xs text-zinc-400">إلى</span>
+        >
+          <option value="all">العربية والأجنبية</option>
+          <option value="arabic">العربية فقط</option>
+          <option value="foreign">الأجنبية فقط</option>
+        </select>
         <input
-          value={toPage}
-          onChange={(e) => setToPage(e.target.value)}
-          className={`${inputCls} w-20`}
+          value={maxPages}
+          onChange={(e) => setMaxPages(e.target.value)}
+          placeholder="عدد الصفحات (فارغ = حتى النهاية)"
+          className={`${inputCls} w-56`}
           disabled={running}
           inputMode="numeric"
         />
         <label className="flex items-center gap-2 text-xs text-zinc-300">
           <input
             type="checkbox"
-            checked={arabicOnly}
-            onChange={(e) => setArabicOnly(e.target.checked)}
+            checked={resume}
+            onChange={(e) => setResume(e.target.checked)}
             disabled={running}
           />
-          العربية فقط
+          أكمل من حيث توقفت
         </label>
         {running ? (
           <button
@@ -413,12 +475,30 @@ function BrowsePanel({ onDbSize }: { onDbSize: (mb: number | null) => void }) {
           </button>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500">
+        <span>وصل الفحص إلى:</span>
+        {(['cinemana', 'cee'] as SourceName[]).flatMap((s) =>
+          (['movie', 'series'] as SourceKind[]).map((k) => (
+            <span key={progressKey(s, k)}>
+              {SOURCE_LABEL[s]} {KIND_LABEL[k]}: صفحة {progress[progressKey(s, k)] ?? 0}
+            </span>
+          )),
+        )}
+        {!running && (
+          <button type="button" onClick={resetProgress} className="underline hover:text-zinc-300">
+            ابدأ من جديد للاختيار الحالي
+          </button>
+        )}
+      </div>
       <p className="text-[11px] text-zinc-500 leading-5">
-        كل صفحة 24 عملاً، والصفحة 1 هي الأحدث في المصدر. حتى {MAX_PAGES_PER_RUN} صفحة في كل تشغيل.
-        «العربية فقط» تقريبية: الأعمال التي عنوانها عربي ولا عنوان إنجليزياً لها. أبقِ الصفحة مفتوحة
-        أثناء العمل.
+        يمر على الكتالوج من الأحدث إلى الأقدم، 24 عملاً في كل صفحة، ويضيف ما ليس في التطبيق. يمكنك
+        الإيقاف في أي وقت والمتابعة لاحقاً من الصفحة نفسها. أبقِ الصفحة مفتوحة أثناء العمل.
+        «العربية» تقريبية: ما عنوانه عربي ولا عنوان إنجليزياً له.
       </p>
       <div className="flex flex-wrap gap-4 text-xs text-zinc-300">
+        <span>
+          صفحات: <b className="text-white">{counts.pages}</b>
+        </span>
         <span>
           فُحص: <b className="text-white">{counts.scanned}</b>
         </span>
