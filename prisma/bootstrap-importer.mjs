@@ -670,7 +670,10 @@ export async function importMovie(caches, imgBase, providerId, tmdbId, counters)
   const movie = await prisma.movie.upsert({
     where: { tmdbId: String(data.id) },
     create: { tmdbId: String(data.id), ...fields },
-    update: await keepExistingArtwork(prisma.movie, String(data.id), fields),
+    // deletedAt: null - importing a title deleted from the admin panel brings it back. Deleting only
+    // flags the row, and the import used to update it while leaving the flag, so it reported success
+    // and the title stayed hidden.
+    update: { ...(await keepExistingArtwork(prisma.movie, String(data.id), fields)), deletedAt: null },
   });
 
   await prisma.movieGenre.createMany({
@@ -804,7 +807,10 @@ export async function importShow(caches, imgBase, providerId, tmdbId, counters) 
   const show = await prisma.tVShow.upsert({
     where: { tmdbId: String(data.id) },
     create: { tmdbId: String(data.id), ...fields },
-    update: await keepExistingArtwork(prisma.tVShow, String(data.id), fields),
+    // deletedAt: null - importing a title deleted from the admin panel brings it back. Deleting only
+    // flags the row, and the import used to update it while leaving the flag, so it reported success
+    // and the title stayed hidden.
+    update: { ...(await keepExistingArtwork(prisma.tVShow, String(data.id), fields)), deletedAt: null },
   });
 
   await prisma.tVShowGenre.createMany({
