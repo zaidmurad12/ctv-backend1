@@ -6,8 +6,8 @@
 // replacing LATEST_APK_FILENAME, before this backend is redeployed. Forgetting either half (the
 // numbers here, or the file in release-assets) means the check offers a build nobody can actually
 // download, or never offers one that's already sitting there.
-export const LATEST_VERSION_CODE = 221;
-export const LATEST_VERSION_NAME = '1.24.61-fresh-episodes';
+export const LATEST_VERSION_CODE = 222;
+export const LATEST_VERSION_NAME = '1.24.62-move-to-newest';
 export const LATEST_APK_FILENAME = 'ctv-plus-latest.apk';
 // Set (non-empty) to hand the app this URL instead of this backend's own /downloads/<filename> -
 // Cloud Run's *.run.app domain turned out unreachable from at least one real user's network (a
@@ -21,6 +21,6 @@ export const LATEST_APK_FILENAME = 'ctv-plus-latest.apk';
 export const LATEST_APK_EXTERNAL_URL =
   'https://raw.githubusercontent.com/zaidmurad12/ctvplus/main/releases/ctv-plus-latest.apk';
 export const LATEST_NOTES_AR =
-  'المسلسلات المحفوظة في المكتبة تعرض أحدث الحلقات، وصفحة المسلسل تفتح على آخر حلقة شاهدتها.';
+  'الأعمال التي تنقلها الإدارة إلى الأحدث تظهر أول قسم الأحدث، والمسلسلات المحفوظة تعرض أحدث الحلقات.';
 export const LATEST_NOTES_EN =
-  'Series saved in the Library show their newest episodes; a series page opens on the last episode you watched.';
+  'Titles the admin moves to newest lead the Newest row; saved series show their newest episodes.';
