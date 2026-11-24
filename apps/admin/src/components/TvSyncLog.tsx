@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
-import { CircleCheck, CircleX, Download, Loader2, RefreshCw, ScanSearch, Tv } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  CircleCheck,
+  CircleX,
+  Download,
+  Loader2,
+  RefreshCw,
+  ScanSearch,
+  Square,
+  Tv,
+} from 'lucide-react';
 import { adminService, type TvSyncLog as TvSyncLogData } from '../services/adminService';
 import { catalogPage, SOURCE_LABEL, type SourceKind, type SourceName } from '../lib/sourceCatalog';
 
@@ -15,6 +24,23 @@ const METHOD_LABEL: Record<string, string> = {
   'tv-notitle': 'غير موجود في TMDB',
 };
 const KIND_LABEL: Record<SourceKind, string> = { movie: 'أفلام', series: 'مسلسلات' };
+
+// How far the "check the newest" button got in each list (next page to read), in this browser only.
+const REACHED_KEY = 'ctv.latestCheck.reached';
+function loadReached(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(REACHED_KEY) || '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+function saveReached(key: string, page: number) {
+  try {
+    localStorage.setItem(REACHED_KEY, JSON.stringify({ ...loadReached(), [key]: page }));
+  } catch {
+    // Private window or blocked storage: the check still works, it just can't continue later.
+  }
+}
 
 type Filter = 'all' | 'matched' | 'imported' | 'unmatched';
 
@@ -35,43 +61,84 @@ export function TvSyncLog() {
   };
   useEffect(load, []);
 
-  // "Check the newest now": this browser (in Iraq) reads both sources' newest films and series and
-  // the server handles them exactly like a TV's report (without the TVs' daily caps).
+  // "Check the newest now": this browser (in Iraq) reads both sources' newest films and series,
+  // page by page (24 titles each), and the server handles them exactly like a TV's report (without
+  // the TVs' daily caps). "Continue" starts each list at the page the last run reached (kept in this
+  // browser); new additions only push titles to later pages, so nothing is skipped - at most a few
+  // titles are seen twice, and the server passes over those at once.
   const [checking, setChecking] = useState(false);
+  const [pagesWanted, setPagesWanted] = useState('5');
+  const [resume, setResume] = useState(false);
+  const [reached, setReached] = useState<Record<string, number>>({});
   const [checkLines, setCheckLines] = useState<Array<{ text: string; warn?: boolean }>>([]);
+  const stopRef = useRef(false);
+  useEffect(() => setReached(loadReached()), []);
   async function checkLatest() {
+    stopRef.current = false;
     setChecking(true);
     setCheckLines([]);
-    const say = (text: string, warn = false) => setCheckLines((l) => [...l, { text, warn }]);
-    for (const source of ['cinemana', 'cee'] as SourceName[]) {
+    const say = (text: string, warn = false) =>
+      setCheckLines((l) => [...l.slice(-300), { text, warn }]);
+    const pages = Math.min(Math.max(Math.floor(Number(pagesWanted)) || 1, 1), 500);
+    const total = { matched: 0, imported: 0, noMatch: 0, skipped: 0 };
+    outer: for (const source of ['cinemana', 'cee'] as SourceName[]) {
       for (const kind of ['movie', 'series'] as SourceKind[]) {
         const label = `${SOURCE_LABEL[source]} - ${KIND_LABEL[kind]}`;
-        let titles;
-        try {
-          titles = await catalogPage(source, kind, 0);
-        } catch {
-          say(`${label}: تعذّر الوصول إلى المصدر (يجب فتح اللوحة من داخل العراق).`, true);
-          continue;
-        }
-        if (!titles.length) {
-          say(`${label}: القائمة فارغة.`, true);
-          continue;
-        }
-        try {
-          const r = await adminService.checkLatestNow(titles);
-          say(
-            `${label}: ${titles.length} عملاً - تطابق ${r.matched}، استيراد ${r.imported}، لم يُعثر عليه ${r.noMatch}، سبق فحصه ${r.skipped}` +
-              (r.dbFull ? ' (قاعدة البيانات ممتلئة - لا استيراد)' : ''),
-            r.dbFull,
-          );
-        } catch (e) {
-          say(
-            `${label}: فشل الإرسال إلى الخادم - ${e instanceof Error ? e.message : String(e)}`,
-            true,
-          );
+        const key = `${source}:${kind}`;
+        const first = resume ? (loadReached()[key] ?? 0) : 0;
+        let retries = 0;
+        for (let page = first; page < first + pages; page++) {
+          if (stopRef.current) break outer;
+          let titles;
+          try {
+            titles = await catalogPage(source, kind, page);
+          } catch {
+            say(`${label}: تعذّر الوصول إلى المصدر (يجب فتح اللوحة من داخل العراق).`, true);
+            break;
+          }
+          if (!titles.length) {
+            say(`${label}: انتهت القائمة عند الصفحة ${page}.`);
+            saveReached(key, 0);
+            setReached(loadReached());
+            break;
+          }
+          try {
+            const r = await adminService.checkLatestNow(titles);
+            total.matched += r.matched;
+            total.imported += r.imported;
+            total.noMatch += r.noMatch;
+            total.skipped += r.skipped;
+            say(
+              `${label} صفحة ${page + 1}: تطابق ${r.matched}، استيراد ${r.imported}، لم يُعثر عليه ${r.noMatch}، سبق فحصه ${r.skipped}` +
+                (r.dbFull ? ' (قاعدة البيانات ممتلئة - لا استيراد)' : ''),
+              r.dbFull,
+            );
+            // Only a fully handled page counts as reached (a full database left titles out).
+            if (r.dbFull) break outer;
+            // The server stops a request after ~3 minutes; the rest of the page is sent again.
+            const handled = r.matched + r.imported + r.noMatch + r.skipped;
+            if (handled < titles.length && retries < 3) {
+              retries++;
+              say(`${label} صفحة ${page + 1}: لم تكتمل (${handled} من ${titles.length}) - تُعاد.`);
+              page--;
+              continue;
+            }
+            retries = 0;
+            saveReached(key, page + 1);
+            setReached(loadReached());
+          } catch (e) {
+            say(
+              `${label} صفحة ${page + 1}: فشل الإرسال إلى الخادم - ${e instanceof Error ? e.message : String(e)}`,
+              true,
+            );
+            break;
+          }
         }
       }
     }
+    say(
+      `${stopRef.current ? 'توقف' : 'انتهى'} - المجموع: تطابق ${total.matched}، استيراد ${total.imported}، لم يُعثر عليه ${total.noMatch}، سبق فحصه ${total.skipped}`,
+    );
     setChecking(false);
     load();
   }
@@ -91,15 +158,25 @@ export function TvSyncLog() {
       <div className="flex items-center gap-2">
         <Tv size={16} className="text-white" />
         <h2 className="text-sm font-black text-white">توافق من أجهزة التلفاز</h2>
-        <button
-          type="button"
-          onClick={() => void checkLatest()}
-          disabled={checking}
-          className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-black bg-white hover:bg-zinc-200 disabled:opacity-40"
-        >
-          {checking ? <Loader2 size={12} className="animate-spin" /> : <ScanSearch size={12} />}
-          فحص الأحدث إضافة الآن (سينمانا وسي)
-        </button>
+        {checking ? (
+          <button
+            type="button"
+            onClick={() => (stopRef.current = true)}
+            className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10"
+          >
+            <Square size={11} />
+            إيقاف الفحص
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void checkLatest()}
+            className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-black bg-white hover:bg-zinc-200"
+          >
+            <ScanSearch size={12} />
+            فحص الأحدث إضافة الآن (سينمانا وسي)
+          </button>
+        )}
         <button
           type="button"
           onClick={load}
@@ -115,8 +192,39 @@ export function TvSyncLog() {
         متوافقاً (ويُنشر إن كان مسودة)، وغير الموجود يُستورد من TMDB بمعرف IMDb أو بالاسم والسنة. زر
         «فحص الأحدث» يفعل الشيء نفسه فوراً من هذا المتصفح.
       </p>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-300">
+        <label className="flex items-center gap-2">
+          عدد الصفحات لكل قائمة (24 عملاً للصفحة):
+          <input
+            value={pagesWanted}
+            onChange={(e) => setPagesWanted(e.target.value)}
+            disabled={checking}
+            inputMode="numeric"
+            className="w-16 bg-black border border-zinc-800 rounded-lg px-2 py-1 text-white"
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={resume}
+            onChange={(e) => setResume(e.target.checked)}
+            disabled={checking}
+          />
+          أكمل من حيث توقف آخر فحص
+        </label>
+        <span className="text-[11px] text-zinc-500">
+          وصل الفحص إلى:{' '}
+          {(['cinemana', 'cee'] as SourceName[])
+            .flatMap((src) =>
+              (['movie', 'series'] as SourceKind[]).map(
+                (k) => `${SOURCE_LABEL[src]} ${KIND_LABEL[k]} صفحة ${reached[`${src}:${k}`] ?? 0}`,
+              ),
+            )
+            .join(' · ')}
+        </span>
+      </div>
       {checkLines.length > 0 && (
-        <div className="rounded-lg bg-black border border-zinc-900 p-3 text-xs leading-6">
+        <div className="rounded-lg bg-black border border-zinc-900 p-3 text-xs leading-6 max-h-72 overflow-auto">
           {checkLines.map((l, i) => (
             <div key={i} className={l.warn ? 'text-amber-400' : 'text-emerald-400'}>
               {l.text}
