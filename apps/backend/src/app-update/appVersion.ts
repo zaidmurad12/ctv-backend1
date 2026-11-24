@@ -23,4 +23,4 @@ export const LATEST_APK_EXTERNAL_URL =
 export const LATEST_NOTES_AR =
   'يرسل التطبيق قائمة الأحدث إضافة من سي أيضاً إلى جانب سينمانا، فتظهر الأعمال الجديدة في المصدرين.';
 export const LATEST_NOTES_EN =
-  'The app now reports CEE\x27s newest titles too, alongside Cinemana\x27s.';
+  'The app now also reports the newest titles from CEE, not only Cinemana.';
