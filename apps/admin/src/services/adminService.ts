@@ -73,6 +73,7 @@ export interface JobsOverview {
 export interface TvSyncLog {
   stats: { matched24h: number; imported24h: number; unmatched24h: number; total: number };
   items: Array<{
+    source?: 'cinemana' | 'cee';
     nb: string;
     kind: 'movie' | 'show';
     enTitle: string | null;
@@ -303,6 +304,26 @@ export const adminService = {
 
   moveToNewest(type: 'movie' | 'show', id: string): Promise<{ ok: true }> {
     return apiRequest('admin/source-check/promote', { method: 'POST', body: { type, id } });
+  },
+
+  // The sources' newest lists, read by this browser, handled by the server like a TV's report.
+  checkLatestNow(items: Array<SourceTitle>): Promise<{
+    matched: number;
+    imported: number;
+    skipped: number;
+    noMatch: number;
+    dbFull: boolean;
+  }> {
+    const body = items.map(({ source, nb, kind, enTitle, arTitle, year, ref }) => ({
+      source,
+      nb,
+      kind,
+      enTitle: enTitle?.slice(0, 300),
+      arTitle: arTitle?.slice(0, 300),
+      year: year?.slice(0, 10),
+      ref: ref?.slice(0, 300),
+    }));
+    return apiRequest('admin/source-check/latest', { method: 'POST', body: { items: body } });
   },
 
   sourceCheckTvLog(limit = 200): Promise<TvSyncLog> {

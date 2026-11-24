@@ -52,6 +52,11 @@ export class LatestSourceItem {
   @IsString()
   @MaxLength(300)
   ref?: string;
+
+  // Which source's list the title came from. TVs before v224 only sent Cinemana's and left it out.
+  @IsOptional()
+  @IsIn(['cinemana', 'cee'])
+  source?: 'cinemana' | 'cee';
 }
 
 export class SourceImportItem extends LatestSourceItem {
@@ -111,6 +116,14 @@ const RETRY_UNMATCHED_MS = 3 * 24 * 3600_000;
 const BACKLOG_PER_CALL = 3;
 const OLD_MISSES = ['tv-noref', 'tv-notmdb'];
 
+type SourceKey = 'CINEMANA' | 'CEE';
+const sourceKeyOf = (item: LatestSourceItem): SourceKey =>
+  item.source === 'cee' ? 'CEE' : 'CINEMANA';
+// The id a TV remembers a title by: Cinemana's number alone (as before v224), "cee:<nb>" for CEE -
+// the two sources number their titles independently.
+const doneKeyOf = (item: LatestSourceItem): string =>
+  item.source === 'cee' ? `cee:${item.nb}` : item.nb;
+
 function imdbOf(ref?: string): string | null {
   const m = /(tt\d{6,10})/i.exec(ref ?? '');
   return m ? m[1]!.toLowerCase() : null;
@@ -148,13 +161,20 @@ export class SourceLatestService {
   // Titles already handled in an earlier call (any TV, any day, even after the free host slept and
   // forgot its memory): linked to a catalog title, or looked up without success in the last 3 days.
   private async alreadyHandled(items: LatestSourceItem[]): Promise<Set<string>> {
-    const nbs = items.map((i) => i.nb).filter((nb) => /^\d+$/.test(nb));
+    const nbs = [...new Set(items.map((i) => i.nb).filter((nb) => /^\d+$/.test(nb)))];
     const done = new Set<string>();
     if (!nbs.length) return done;
     const retryAfter = new Date(Date.now() - RETRY_UNMATCHED_MS);
     const rows = await this.prisma.sourceCatalogItem.findMany({
-      where: { source: 'CINEMANA', nb: { in: nbs } },
-      select: { kind: true, nb: true, status: true, matchMethod: true, lastAttemptAt: true },
+      where: { source: { in: ['CINEMANA', 'CEE'] }, nb: { in: nbs } },
+      select: {
+        source: true,
+        kind: true,
+        nb: true,
+        status: true,
+        matchMethod: true,
+        lastAttemptAt: true,
+      },
     });
     for (const row of rows) {
       const recentMiss =
@@ -163,7 +183,7 @@ export class SourceLatestService {
         row.lastAttemptAt != null &&
         row.lastAttemptAt > retryAfter;
       if (row.status === 'MATCHED' || recentMiss) {
-        done.add(`${row.kind === 'SERIES' ? 'series' : 'movie'}:${row.nb}`);
+        done.add(`${row.source}:${row.kind === 'SERIES' ? 'series' : 'movie'}:${row.nb}`);
       }
     }
     return done;
@@ -172,9 +192,20 @@ export class SourceLatestService {
   // `done` lists the source numbers that need no further sending (handled now or earlier); the TV
   // remembers them and sends only the rest next time. Titles left out because of the per-call or
   // per-day import caps are not in it, so they are sent again later.
+  // `admin`: the admin panel's "check the newest now" button - no per-call / per-day import caps
+  // (only the database size guard), and titles a TV handled in the last day are looked at again.
   async ingest(
     body: LatestSourceBody,
-  ): Promise<{ matched: number; imported: number; skipped: number; done: string[] }> {
+    options: { admin?: boolean } = {},
+  ): Promise<{
+    matched: number;
+    imported: number;
+    skipped: number;
+    noMatch: number;
+    dbFull: boolean;
+    done: string[];
+  }> {
+    const admin = options.admin === true;
     const started = Date.now();
     const now = Date.now();
     for (const [nb, at] of this.seen) if (now - at > 24 * 3600_000) this.seen.delete(nb);
@@ -183,21 +214,25 @@ export class SourceLatestService {
       this.importDay = today;
       this.importsToday = 0;
     }
+    const dbSizeMb = await this.databaseSizeMb();
+    const dbFull = dbSizeMb !== null && dbSizeMb >= DB_STOP_MB;
 
     let matched = 0;
     let imported = 0;
     let skipped = 0;
+    let noMatch = 0;
     let importsThisCall = 0;
     const handled = await this.alreadyHandled(body.items);
     const done = new Set<string>();
     for (const item of body.items) {
+      const key = doneKeyOf(item);
       if (
         !/^\d+$/.test(item.nb) ||
-        this.seen.has(item.nb) ||
-        handled.has(`${item.kind}:${item.nb}`)
+        (!admin && this.seen.has(key)) ||
+        handled.has(`${sourceKeyOf(item)}:${item.kind}:${item.nb}`)
       ) {
         skipped++;
-        done.add(item.nb);
+        done.add(key);
         continue;
       }
       if (Date.now() - started > CALL_BUDGET_MS) break;
@@ -206,27 +241,29 @@ export class SourceLatestService {
         const found = await this.findExisting(kind, item);
         if (found) {
           await this.markCompatible(kind, found.id, false);
-          await this.record(item, kind, 'MATCHED', found.method, found.id);
+          await this.record(item, kind, 'MATCHED', found.method, found.id, sourceKeyOf(item));
           matched++;
-          done.add(item.nb);
-          this.seen.set(item.nb, now);
+          done.add(key);
+          this.seen.set(key, now);
           continue;
         }
         // Left for a later call (not in `done`, so the TV sends it again) once the caps are reached.
-        if (importsThisCall >= IMPORTS_PER_CALL || this.importsToday >= IMPORTS_PER_DAY) {
+        const capped =
+          !admin && (importsThisCall >= IMPORTS_PER_CALL || this.importsToday >= IMPORTS_PER_DAY);
+        if (capped || dbFull) {
           skipped++;
           continue;
         }
-        this.seen.set(item.nb, now);
+        this.seen.set(key, now);
         const result = await this.importFromTmdb(kind, item);
         if (result === 'no-match') {
-          done.add(item.nb);
-          skipped++;
+          done.add(key);
+          noMatch++;
           continue;
         }
         importsThisCall++;
         imported++;
-        done.add(item.nb);
+        done.add(key);
       } catch (err) {
         skipped++;
         this.logger.warn(
@@ -235,11 +272,11 @@ export class SourceLatestService {
       }
     }
     // Spare room in this call goes to titles left out before the title search existed.
-    if (Date.now() - started < CALL_BUDGET_MS / 2) {
+    if (!admin && !dbFull && Date.now() - started < CALL_BUDGET_MS / 2) {
       const backlog = await this.prisma.sourceCatalogItem.findMany({
         where: { source: 'CINEMANA', status: 'UNMATCHED', matchMethod: { in: OLD_MISSES } },
         orderBy: { lastAttemptAt: 'asc' },
-        take: Math.min(BACKLOG_PER_CALL, IMPORTS_PER_CALL - importsThisCall),
+        take: Math.max(0, Math.min(BACKLOG_PER_CALL, IMPORTS_PER_CALL - importsThisCall)),
       });
       for (const row of backlog) {
         if (this.importsToday >= IMPORTS_PER_DAY || Date.now() - started > CALL_BUDGET_MS) break;
@@ -250,6 +287,7 @@ export class SourceLatestService {
           arTitle: row.arTitle ?? undefined,
           year: row.year != null ? String(row.year) : undefined,
           ref: row.imdbId ?? undefined,
+          source: 'cinemana',
         };
         const kind = item.kind === 'series' ? 'show' : 'movie';
         try {
@@ -271,7 +309,7 @@ export class SourceLatestService {
         }
       }
     }
-    return { matched, imported, skipped, done: [...done] };
+    return { matched, imported, skipped, noMatch, dbFull, done: [...done] };
   }
 
   // The admin's "import from the sources" page (run from a browser in Iraq, which lists or searches
@@ -520,7 +558,7 @@ export class SourceLatestService {
     status: 'MATCHED' | 'UNMATCHED',
     method: string,
     targetId: string | null,
-    source: 'CINEMANA' | 'CEE' = 'CINEMANA',
+    source: SourceKey = sourceKeyOf(item),
   ): Promise<void> {
     const data = {
       enTitle: item.enTitle?.slice(0, 500) ?? null,
@@ -578,6 +616,7 @@ export class SourceLatestService {
       items: rows.map((r) => {
         const target = r.matchedMovie ?? r.matchedShow;
         return {
+          source: r.source === 'CEE' ? 'cee' : 'cinemana',
           nb: r.nb,
           kind: r.kind === 'SERIES' ? 'show' : 'movie',
           enTitle: r.enTitle,
@@ -650,6 +689,15 @@ export class SourceLatestAdminController {
   })
   tvLog(@Query('limit') limit?: string) {
     return this.service.tvLog(Math.min(Math.max(Number(limit) || 100, 1), 300));
+  }
+
+  // The panel's "check the newest now" button: the admin's browser (in Iraq) fetched the sources'
+  // newest lists and sends them here, handled exactly like a TV's report but without the caps.
+  @Post('latest')
+  @HttpCode(200)
+  @ApiOperation({ summary: "Handle the sources' newest lists now, sent from the admin panel" })
+  latest(@Body() body: LatestSourceBody) {
+    return this.service.ingest(body, { admin: true });
   }
 
   @Post('import')

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck, CircleX, Download, Loader2, RefreshCw, Tv } from 'lucide-react';
+import { CircleCheck, CircleX, Download, Loader2, RefreshCw, ScanSearch, Tv } from 'lucide-react';
 import { adminService, type TvSyncLog as TvSyncLogData } from '../services/adminService';
+import { catalogPage, SOURCE_LABEL, type SourceKind, type SourceName } from '../lib/sourceCatalog';
 
 // What the TVs did with the sources' "newly added" lists (sent once a day by each TV - see the
 // backend's admin/sourceLatest.ts): titles linked to works we already had, titles imported from
@@ -11,7 +12,9 @@ const METHOD_LABEL: Record<string, string> = {
   'tv-import': 'استيراد جديد من TMDB',
   'tv-noref': 'بلا معرف IMDb في المصدر',
   'tv-notmdb': 'غير موجود في TMDB',
+  'tv-notitle': 'غير موجود في TMDB',
 };
+const KIND_LABEL: Record<SourceKind, string> = { movie: 'أفلام', series: 'مسلسلات' };
 
 type Filter = 'all' | 'matched' | 'imported' | 'unmatched';
 
@@ -32,6 +35,47 @@ export function TvSyncLog() {
   };
   useEffect(load, []);
 
+  // "Check the newest now": this browser (in Iraq) reads both sources' newest films and series and
+  // the server handles them exactly like a TV's report (without the TVs' daily caps).
+  const [checking, setChecking] = useState(false);
+  const [checkLines, setCheckLines] = useState<Array<{ text: string; warn?: boolean }>>([]);
+  async function checkLatest() {
+    setChecking(true);
+    setCheckLines([]);
+    const say = (text: string, warn = false) => setCheckLines((l) => [...l, { text, warn }]);
+    for (const source of ['cinemana', 'cee'] as SourceName[]) {
+      for (const kind of ['movie', 'series'] as SourceKind[]) {
+        const label = `${SOURCE_LABEL[source]} - ${KIND_LABEL[kind]}`;
+        let titles;
+        try {
+          titles = await catalogPage(source, kind, 0);
+        } catch {
+          say(`${label}: تعذّر الوصول إلى المصدر (يجب فتح اللوحة من داخل العراق).`, true);
+          continue;
+        }
+        if (!titles.length) {
+          say(`${label}: القائمة فارغة.`, true);
+          continue;
+        }
+        try {
+          const r = await adminService.checkLatestNow(titles);
+          say(
+            `${label}: ${titles.length} عملاً - تطابق ${r.matched}، استيراد ${r.imported}، لم يُعثر عليه ${r.noMatch}، سبق فحصه ${r.skipped}` +
+              (r.dbFull ? ' (قاعدة البيانات ممتلئة - لا استيراد)' : ''),
+            r.dbFull,
+          );
+        } catch (e) {
+          say(
+            `${label}: فشل الإرسال إلى الخادم - ${e instanceof Error ? e.message : String(e)}`,
+            true,
+          );
+        }
+      }
+    }
+    setChecking(false);
+    load();
+  }
+
   const items = (data?.items ?? []).filter((i) =>
     filter === 'all'
       ? true
@@ -49,18 +93,38 @@ export function TvSyncLog() {
         <h2 className="text-sm font-black text-white">توافق من أجهزة التلفاز</h2>
         <button
           type="button"
+          onClick={() => void checkLatest()}
+          disabled={checking}
+          className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-black bg-white hover:bg-zinc-200 disabled:opacity-40"
+        >
+          {checking ? <Loader2 size={12} className="animate-spin" /> : <ScanSearch size={12} />}
+          فحص الأحدث إضافة الآن (سينمانا وسي)
+        </button>
+        <button
+          type="button"
           onClick={load}
           disabled={loading}
-          className="mr-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border border-zinc-800 text-zinc-300 hover:bg-zinc-900"
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs border border-zinc-800 text-zinc-300 hover:bg-zinc-900"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           تحديث
         </button>
       </div>
       <p className="text-xs text-zinc-400">
-        يرسل كل جهاز مرة يومياً قائمة "المضاف حديثاً" من سينمانا: العمل الموجود يُعلَّم متوافقاً
-        (ويُنشر إن كان مسودة)، وغير الموجود يُستورد من TMDB بمعرف IMDb.
+        يرسل كل جهاز كل بضع ساعات قائمة "المضاف حديثاً" من سينمانا وسي: العمل الموجود يُعلَّم
+        متوافقاً (ويُنشر إن كان مسودة)، وغير الموجود يُستورد من TMDB بمعرف IMDb أو بالاسم والسنة. زر
+        «فحص الأحدث» يفعل الشيء نفسه فوراً من هذا المتصفح.
       </p>
+      {checkLines.length > 0 && (
+        <div className="rounded-lg bg-black border border-zinc-900 p-3 text-xs leading-6">
+          {checkLines.map((l, i) => (
+            <div key={i} className={l.warn ? 'text-amber-400' : 'text-emerald-400'}>
+              {l.text}
+            </div>
+          ))}
+          {checking && <Loader2 size={12} className="animate-spin text-sky-400" />}
+        </div>
+      )}
       {data && (
         <div className="flex flex-wrap gap-6 text-sm">
           <span className="text-emerald-400">
@@ -110,7 +174,7 @@ export function TvSyncLog() {
           const Row = href ? 'a' : 'div';
           return (
             <Row
-              key={`${i.kind}:${i.nb}`}
+              key={`${i.source ?? 'cinemana'}:${i.kind}:${i.nb}`}
               {...(href ? { href } : {})}
               className="flex items-center gap-3 px-4 py-2 text-xs hover:bg-zinc-900"
             >
@@ -127,7 +191,9 @@ export function TvSyncLog() {
               <span className="text-zinc-500">{i.enTitle}</span>
               <span className="text-zinc-600">{i.year ?? ''}</span>
               <span className="text-zinc-600">{i.kind === 'movie' ? 'فيلم' : 'مسلسل'}</span>
-              <span className="text-zinc-600">سينمانا #{i.nb}</span>
+              <span className="text-zinc-600">
+                {SOURCE_LABEL[i.source ?? 'cinemana']} #{i.nb}
+              </span>
               <span className="mr-auto text-zinc-400">
                 {METHOD_LABEL[i.method ?? ''] ?? i.method}
               </span>
